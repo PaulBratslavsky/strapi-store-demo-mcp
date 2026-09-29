@@ -94,7 +94,7 @@ Publishing an appointment **is** the staff confirmation.
 |---|---|---|
 | `appointment` | relation, many-to-one → `appointment` | `inversedBy: notifications` |
 | `channel` | enumeration: `line` | |
-| `status` | enumeration: `sent`, `failed` | |
+| `outcome` | enumeration: `sent`, `failed` | Named `outcome` because `status` is a reserved attribute name in Strapi 5. Tools still call it `status`. |
 | `sentAt` | datetime | When the outcome was recorded |
 | `detail` | text, max 500 | LINE's response, or why it failed |
 | `recordedBy` | string | For example `ops-agent` |
@@ -197,7 +197,7 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 
 ### Prompt: `send_pending_confirmations`
 
-Registered with `strapi.ai.mcp.registerPrompt`, gated on `confirmations.send` if prompts support auth policies. It holds no data either way.
+Registered with `strapi.ai.mcp.registerPrompt` and gated on `confirmations.send`, since Strapi 5.55 prompts accept auth policies. It holds no data.
 
 The text tells the agent to:
 
@@ -235,7 +235,7 @@ Shipped in the package: JSON content plus images under `server/seed/`.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `liffUrl` | required for confirmations | Base of `appLink`, for example `https://liff.line.me/<LIFF ID>` |
+| `liffUrl` | required for confirmations | Base of `appLink`, for example `https://liff.line.me/<LIFF ID>`, or `http://localhost:<port>` during local development |
 | `timezone` | `Asia/Tokyo` | Opening-hours checks and message formatting |
 | `defaultLocale` | `ja` | Default for `locale` inputs |
 | `maxOpenRequestsPerCustomer` | `3` | Abuse limit |
