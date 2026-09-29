@@ -3,7 +3,6 @@ import { errors } from '@strapi/utils';
 
 import { OCCASIONS, PERSONALIZATION_KINDS, UID } from './constants';
 import { validateOpeningHours } from './domain/hours';
-import { relationDocumentId } from './domain/relations';
 import { validateEnumArray } from './domain/validation';
 
 type Data = Record<string, unknown>;
@@ -31,11 +30,10 @@ const validateBoutique = (data: Data) => {
 };
 
 const assertUniqueStockPair = async (strapi: Core.Strapi, data: Data) => {
-  const product = relationDocumentId(data.product);
-  const boutique = relationDocumentId(data.boutique);
-  if (!product || !boutique) return;
+  const { productSlug, boutiqueSlug } = data;
+  if (typeof productSlug !== 'string' || typeof boutiqueSlug !== 'string') return;
   const existing = await strapi.documents(UID.stockLevel).count({
-    filters: { product: { documentId: product }, boutique: { documentId: boutique } },
+    filters: { productSlug: { $eq: productSlug }, boutiqueSlug: { $eq: boutiqueSlug } },
   });
   if (existing > 0) fail('A stock level for this product and boutique already exists; update it instead.');
 };

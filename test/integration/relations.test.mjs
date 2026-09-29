@@ -4,6 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import { SUBJECT_A, bootStrapi, ensureLocales } from './harness.mjs';
 
 const UID = {
+  collection: 'plugin::maison.collection',
   product: 'plugin::maison.product',
   boutique: 'plugin::maison.boutique',
   stock: 'plugin::maison.stock-level',
@@ -32,18 +33,9 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     await strapi?.destroy();
   });
 
-  it('keeps a stock level linked through a product republish and a new locale', async () => {
-    await strapi.documents(UID.stock).create({
-      data: {
-        product: { documentId: product, locale: 'ja', status: 'published' },
-        boutique: { documentId: boutique, locale: 'ja', status: 'published' },
-        quantity: 2,
-      },
-    });
-    const read = () => strapi.documents(UID.stock).findMany({
-      filters: { product: { documentId: product } },
-      populate: { product: { fields: ['documentId'] }, boutique: { fields: ['documentId'] } },
-    });
+  it('keys stock levels by slug, so republishing a product or adding a locale never orphans them', async () => {
+    await strapi.documents(UID.stock).create({ data: { productSlug: 'probe', boutiqueSlug: 'ginza', quantity: 2 } });
+    const read = () => strapi.documents(UID.stock).findMany({ filters: { productSlug: { $eq: 'probe' } } });
     assert.equal((await read()).length, 1);
 
     await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { priceJpy: 2000 } });
@@ -52,9 +44,9 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     await strapi.documents(UID.product).publish({ documentId: product, locale: 'en' });
 
     const rows = await read();
-    assert.equal(rows.length, 1, 'stock level is still found by product documentId');
-    assert.equal(rows[0].product?.documentId, product, 'relation still points at the product');
-    assert.equal(rows[0].boutique?.documentId, boutique);
+    assert.equal(rows.length, 1, 'the stock level is still found by product slug');
+    assert.equal(rows[0].boutiqueSlug, 'ginza');
+    assert.equal(rows[0].quantity, 2);
   });
 
   it('keeps an appointment linked when it is published and when its boutique is republished', async () => {
@@ -83,31 +75,44 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     const again = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
     assert.equal(again.boutique?.documentId, boutique, 'relation survives a boutique republish');
 
+    await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { priceJpy: 3000 } });
+    await strapi.documents(UID.product).publish({ documentId: product, locale: 'ja' });
+    const afterProduct = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
+    assert.equal(afterProduct.products?.[0]?.documentId, product, 'relation survives a product republish');
+
     await strapi.documents(UID.notification).create({
-      data: {
-        appointment: { documentId: created.documentId, status: 'published' },
-        channel: 'line', outcome: 'sent', sentAt: new Date().toISOString(), detail: 'probe', recordedBy: 'test',
-      },
+      data: { appointmentReference: 'APT-0001', channel: 'line', outcome: 'sent', sentAt: new Date().toISOString(), detail: 'probe', recordedBy: 'test' },
     });
-    const logged = () => strapi.documents(UID.notification).findMany({
-      filters: { appointment: { documentId: created.documentId } },
-    });
-    assert.equal((await logged()).length, 1, 'notification is found by appointment documentId');
+    const logged = () => strapi.documents(UID.notification).findMany({ filters: { appointmentReference: { $eq: 'APT-0001' } } });
+    assert.equal((await logged()).length, 1, 'notification is found by appointment reference');
 
     await strapi.documents(UID.appointment).update({ documentId: created.documentId, data: { customerNote: 'edited after confirmation' } });
     await strapi.documents(UID.appointment).publish({ documentId: created.documentId });
     assert.equal((await logged()).length, 1, 'notification survives a republish of its appointment');
+    const republished = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
+    assert.equal(republished.boutique?.documentId, boutique, 'the republished appointment keeps its boutique');
+    assert.equal(republished.products?.[0]?.documentId, product, 'and its product');
+  });
+
+  it('keeps a product in its collection when the collection is republished', async () => {
+    const collection = (await strapi.documents(UID.collection).create({
+      locale: 'ja', status: 'published', data: { name: '旅', slug: 'voyage-probe' },
+    })).documentId;
+    await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { collection } });
+    await strapi.documents(UID.product).publish({ documentId: product, locale: 'ja' });
+    const inCollection = () => strapi.documents(UID.product).findMany({
+      locale: 'ja', status: 'published', filters: { collection: { slug: { $eq: 'voyage-probe' } } }, fields: ['slug'],
+    });
+    assert.deepEqual((await inCollection()).map((p) => p.slug), ['probe']);
+
+    await strapi.documents(UID.collection).update({ documentId: collection, locale: 'ja', data: { name: '旅の品' } });
+    await strapi.documents(UID.collection).publish({ documentId: collection, locale: 'ja' });
+    assert.deepEqual((await inCollection()).map((p) => p.slug), ['probe'], 'the product stays in its collection');
   });
 
   it('applies the validation middleware', async () => {
     await assert.rejects(
-      strapi.documents(UID.stock).create({
-        data: {
-          product: { documentId: product, locale: 'ja', status: 'published' },
-          boutique: { documentId: boutique, locale: 'ja', status: 'published' },
-          quantity: 1,
-        },
-      }),
+      strapi.documents(UID.stock).create({ data: { productSlug: 'probe', boutiqueSlug: 'ginza', quantity: 1 } }),
       /already exists/
     );
     await assert.rejects(

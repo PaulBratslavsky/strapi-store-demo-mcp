@@ -11,7 +11,6 @@
     "address": { "type": "text", "pluginOptions": { "i18n": { "localized": true } } },
     "openingHours": { "type": "json", "required": true, "pluginOptions": { "i18n": { "localized": false } } },
     "image": { "type": "media", "multiple": false, "allowedTypes": ["images"], "pluginOptions": { "i18n": { "localized": false } } },
-    "stockLevels": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.stock-level", "mappedBy": "boutique" },
     "appointments": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.appointment", "mappedBy": "boutique" }
   }
 }

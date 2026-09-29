@@ -21,7 +21,6 @@
     "personalizationLeadDays": { "type": "integer", "min": 0, "pluginOptions": { "i18n": { "localized": false } } },
     "giftOccasions": { "type": "json", "pluginOptions": { "i18n": { "localized": false } } },
     "collection": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.collection", "inversedBy": "products" },
-    "stockLevels": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.stock-level", "mappedBy": "product" },
     "appointments": { "type": "relation", "relation": "manyToMany", "target": "plugin::maison.appointment", "mappedBy": "products" }
   }
 }

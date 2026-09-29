@@ -5,7 +5,7 @@
   "options": { "draftAndPublish": false },
   "pluginOptions": { "content-manager": { "visible": true }, "content-type-builder": { "visible": false } },
   "attributes": {
-    "appointment": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.appointment", "inversedBy": "notifications" },
+    "appointmentReference": { "type": "string", "required": true },
     "channel": { "type": "enumeration", "enum": ["line"], "default": "line", "required": true },
     "outcome": { "type": "enumeration", "enum": ["sent", "failed"], "required": true },
     "sentAt": { "type": "datetime", "required": true },
