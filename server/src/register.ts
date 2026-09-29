@@ -1,5 +1,9 @@
 import type { Core } from '@strapi/strapi';
 
-const register = ({ strapi: _strapi }: { strapi: Core.Strapi }) => {};
+import { registerDocumentMiddleware } from './document-middleware';
+
+const register = ({ strapi }: { strapi: Core.Strapi }) => {
+  registerDocumentMiddleware(strapi);
+};
 
 export default register;

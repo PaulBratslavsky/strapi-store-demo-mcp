@@ -1,0 +1,12 @@
+{
+  "kind": "collectionType",
+  "collectionName": "maison_stock_levels",
+  "info": { "singularName": "stock-level", "pluralName": "stock-levels", "displayName": "Maison stock level", "description": "How many of a product a boutique holds." },
+  "options": { "draftAndPublish": false },
+  "pluginOptions": { "content-manager": { "visible": true }, "content-type-builder": { "visible": false } },
+  "attributes": {
+    "product": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.product", "inversedBy": "stockLevels" },
+    "boutique": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.boutique", "inversedBy": "stockLevels" },
+    "quantity": { "type": "integer", "required": true, "min": 0, "default": 0 }
+  }
+}
