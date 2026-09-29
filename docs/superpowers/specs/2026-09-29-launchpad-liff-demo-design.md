@@ -20,7 +20,7 @@
 | `config/server.ts` | `mcp: { enabled: env.bool('MCP_ENABLED', true) }` (already on the local branch). `url: env('PUBLIC_URL')` so OAuth metadata and links use the public https address. |
 | `config/admin.ts` | `secrets: { encryptionKey: env('ENCRYPTION_KEY') }`, which oauth-mcp-manager needs to decrypt admin tokens |
 | `config/plugins.ts` | `maison: { config: { liffUrl, houseName } }` and `'strapi-oauth-mcp-manager': { config: { identityProviders: { line: { channelId } } } }` |
-| `config/middlewares.ts` | Replace `'strapi::cors'` with the object form: `origin` = LaunchPad's existing frontends plus the LIFF app origin; `headers` include `Authorization`, `Content-Type`, `Accept`, `Mcp-Protocol-Version`; `expose` includes `WWW-Authenticate` |
+| `config/middlewares.ts` | Replace `'strapi::cors'` with the object form: `origin` = LaunchPad's existing frontends plus the LIFF app origin; `methods` `GET, POST, DELETE, OPTIONS`; `headers` `Content-Type`, `Authorization`, `Accept`, `mcp-session-id`, `mcp-protocol-version`, `Last-Event-ID`; `expose` `WWW-Authenticate`, `mcp-session-id`, `mcp-protocol-version` |
 | `.env.example` | `ENCRYPTION_KEY`, `PUBLIC_URL`, `LINE_LOGIN_CHANNEL_ID`, `MAISON_LIFF_URL` |
 
 ### Users, roles and tokens
@@ -113,7 +113,15 @@ Every screen shows a small badge naming its tool. A **"Show agent view"** toggle
 
 ## Part C: LINE setup (runbook)
 
-1. **LINE Developers:** sign in and create a provider, for example "Maison Demo". **Check first** that this account can create a LINE Official Account in a supported region. If not, stop and ask LINE/QBurst for a provider containing both channels, with the presenter added as an admin.
+There are two tracks with the same code, differing only in channel IDs:
+
+- **Stage:** a provider from LY/QBurst containing an unverified **LINE MINI App channel** and a **Messaging API channel**, with the presenter as admin. Request it on day 1. In that provider:
+  - create the LIFF app inside the MINI App channel, with the same settings as step 3 below
+  - issue the Official Account's channel access token for LINE Bot MCP
+  - set `LINE_LOGIN_CHANNEL_ID` to the MINI App channel's ID and `MAISON_LIFF_URL` to its LIFF URL
+- **Development and fallback:** the presenter's own provider, following steps 1–5 below. If the stage channels haven't arrived by 5 October, present on this track.
+
+1. **LINE Developers:** sign in and create a provider, for example "Maison Demo". **Check first** that this account can create a LINE Official Account in a supported region. If not, development waits for the LY/QBurst provider.
 2. **Official Account:** create it in LINE Official Account Manager, enable the Messaging API, and assign it to the **same provider**. Issue a long-lived channel access token for LINE Bot MCP.
 3. **LINE Login channel** under the same provider:
    - Create a LIFF app: endpoint = the Vercel URL of `liff/`, scopes `openid` and `profile`, size `full`.
@@ -122,7 +130,8 @@ Every screen shows a small badge naming its tool. A **"Show agent view"** toggle
 4. **Test accounts:**
    - the presenter's phone, which has added the Official Account
    - a second LINE account that has **not** added it, for the optional failure beat
-5. **Later:** when LINE/QBurst provide a LINE Mini App channel **under the same provider**, create the LIFF app there and switch `channelId` and the LIFF ID. No code changes.
+5. **Switching to the stage track:** change `LINE_LOGIN_CHANNEL_ID`, `MAISON_LIFF_URL`, the OAuth client's channel settings, and LINE Bot MCP's channel access token. Then reset demo appointments, because user IDs differ between providers. No code changes.
+6. **Production note for the talk:** a *verified* MINI App would send this confirmation as a MINI App service message, with no friend needed. That requires verification and reviewed templates, so the demo uses the Official Account.
 
 ## Part D: Ops agent (stage laptop)
 

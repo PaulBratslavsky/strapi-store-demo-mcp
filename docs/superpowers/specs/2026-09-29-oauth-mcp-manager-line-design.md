@@ -1,9 +1,11 @@
 # oauth-mcp-manager 1.1: LINE sign-in for customers
 
-- **Date:** 2026-09-29
+- **Date:** 2026-09-29, revised the same day
 - **Status:** Draft for review
 - **Overview:** [AX luxury demo overview](2026-09-29-ax-luxury-demo-overview.md)
 - **Target repo:** [PaulBratslavsky/strapi-oauth-mcp-manager](https://github.com/PaulBratslavsky/strapi-oauth-mcp-manager), currently 1.0.0 (`046b629`), on a feature branch for 1.1.0
+
+> **Revision:** the first draft passed the customer's identity to tools in an `x-mcp-subject` header set by the middleware. That can't work. Strapi's MCP transport (`@modelcontextprotocol/node` 2.0.0 on `@hono/node-server` 1.19.17) builds the headers tools see from Node's `rawHeaders`, so a middleware's header edits never reach tools, and a caller's own header would. Identity now comes from a service lookup instead (see [Subject lookup](#subject-lookup)).
 
 ## Purpose
 
@@ -12,7 +14,8 @@ oauth-mcp-manager 1.0 lets **staff** connect MCP clients to Strapi's built-in `/
 1.1 adds a second path for **end customers**:
 
 - A customer app that already has a LINE ID token exchanges it for a session token.
-- The middleware passes the customer's verified identity to tools in a trusted header.
+- The grant records who the customer is (`subject`).
+- Tool plugins ask the plugin, through a public service method, which customer holds the session token they were called with.
 - Strapi core still only ever sees an admin token.
 
 The feature is general-purpose: any Strapi app exposing MCP tools to LINE users can use it.
@@ -20,7 +23,7 @@ The feature is general-purpose: any Strapi app exposing MCP tools to LINE users 
 ## What stays the same
 
 - The staff consent flow, dynamic client registration, PKCE, refresh rotation and reuse detection, revocation rules, discovery documents, and the admin page's existing features.
-- Plain admin tokens sent to `/mcp` still pass through.
+- Plain admin tokens sent to `/mcp` still pass through the middleware untouched.
 - The plugin still requires `admin.secrets.encryptionKey`, because grants decrypt their admin token on every request.
 
 ## Configuration
@@ -39,35 +42,46 @@ The feature is general-purpose: any Strapi app exposing MCP tools to LINE users 
 
 - `identityProviders` is empty by default, so the feature is off unless configured.
 - The validator requires `channelId` to be a non-empty string when `line` is present.
-- `endUserAccessTokenTtl` defaults to 3600 and must be a non-negative number.
-- `identityProviders.line.verifyUrl` is optional and defaults to `https://api.line.me/oauth2/v2.1/verify`. It exists only so tests can point verification at a mock server. The README marks it as test-only.
+- `endUserAccessTokenTtl` defaults to 3600 and must be a positive integer.
+- `identityProviders.line.verifyUrl` is optional and defaults to `https://api.line.me/oauth2/v2.1/verify`. It exists only so tests and local development can point verification at a mock server. The README marks it as test-only.
 
 ## Identity provider interface
 
 ```ts
 interface IdentityProvider {
   id: 'line';
-  verify(idToken: string): Promise<{ subject: string; expiresAt: Date }>; // throws ProviderError
+  verify(idToken: string): Promise<{ subject: string; expiresAt: Date }>; // throws OAuthError
 }
 ```
 
 The LINE implementation:
 
-- Calls `POST https://api.line.me/oauth2/v2.1/verify` as `application/x-www-form-urlencoded`, with `id_token` and `client_id=<channelId>`, and a 5-second timeout.
+- Calls `POST {verifyUrl}` as `application/x-www-form-urlencoded`, with `id_token` and `client_id=<channelId>`, and a 5-second timeout.
 - Rejects the token unless the response has `aud === channelId`, `exp` in the future, and a `sub` matching `^U[0-9a-f]{32}$`.
 - Returns `subject: "line:" + sub`.
-- Maps LINE's 4xx responses to `invalid_grant` ("The LINE ID token is invalid or expired"), and network errors or 5xx to `temporarily_unavailable`.
+- Maps LINE's 4xx responses, and any failed check, to `invalid_grant` ("The LINE ID token is invalid or expired"). Maps network errors, timeouts and 5xx to `temporarily_unavailable` (HTTP 503).
 
-Only LINE is built. The interface exists so another provider (for example Google) can be added without touching the token endpoint or the middleware.
+Only LINE is built. The interface exists so another provider can be added without touching the token endpoint.
 
 ## Data model changes
 
 | Content type | New field | Notes |
 |---|---|---|
-| `mcp-oauth-client` | `endUserProvider`: enumeration `none` \| `line`, default `none` | |
+| `mcp-oauth-client` | `endUserProvider`: enumeration `none` \| `line`, default `none` | Existing rows read back as `null` (defaults apply only on create). `normalizeClient` treats `null` as `none`. |
 | `mcp-oauth-token` (grants) | `subject`: string, private | `line:U…`. Empty for staff grants. |
 
-These are additive, so existing clients and grants are unaffected. `line` clients must be public (`tokenEndpointAuthMethod: none`) and must have a mapped admin token (`adminTokenId`). The service rejects any other combination on create or update.
+These are additive, so existing clients and grants are unaffected.
+
+Rules for `line` clients, enforced by the service on create and update:
+
+- They're always public (`tokenEndpointAuthMethod: none`). The admin create endpoint defaults to confidential today, so `line` overrides it.
+- They must have a mapped admin token (`adminTokenId`). Updating a `line` client to unmap its token (`adminTokenId: null`) is rejected.
+- Redirect URIs are optional, because token exchange has no redirect. The admin controller's and form's "at least one redirect URI" rule applies only to `none` clients.
+
+Existing queries that list fields explicitly gain the new ones:
+
+- `listGrants` returns `subject`, masked by the service (`line:U4af…9c`), since the admin controller returns raw rows.
+- `listClients` returns `endUserProvider`.
 
 ## Token exchange grant
 
@@ -84,16 +98,16 @@ These are additive, so existing clients and grants are unaffected. `line` client
 Checks, in order:
 
 1. The client authenticates as a public client, is active, and has `endUserProvider === 'line'` (`unauthorized_client`).
-2. The provider is configured (`unauthorized_client`, with "LINE sign-in is not configured").
-3. `subject_token_type` is the id_token type (`invalid_request`).
+2. The LINE provider is configured (`unauthorized_client`, with "LINE sign-in is not configured").
+3. `subject_token` is present and `subject_token_type` is the id_token type (`invalid_request`).
 4. The provider verifies the token.
-5. The client's mapped admin token loads for its owner (the same `loadOwnedToken(adminTokenId, ownerId)` path used for mapped staff clients), and the owner is active (`invalid_grant`).
+5. The client's mapped admin token loads for its owner, using `getMappedToken(client)` for the owner and then the same owned-token loading used by mapped staff clients. The owner must be active (`invalid_grant`).
 
 It then creates a grant:
 
-- `subject`, `adminUserId` (the token owner), `adminTokenId`, `ownsAdminToken: false`, `adminKeyHash`, `scope`, `resource`
+- `subject`, `adminUserId` (the token owner), `adminTokenId`, `ownsAdminToken: false`, `adminKeyHash`, `scope: 'mcp'`, `resource`
 - `expiresAt = now + endUserAccessTokenTtl`
-- **no refresh token**: `issueTokens` gains an option to skip it, since the app simply exchanges a fresh ID token
+- **no refresh token**: `refreshTokenHash` stays empty, and **`refreshExpiresAt = expiresAt`**. Cleanup deletes grants by `refreshExpiresAt`, and the admin page shows it as "Expires".
 
 Response:
 
@@ -102,35 +116,45 @@ Response:
   "access_token": "<plugin access token>",
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "Bearer",
-  "expires_in": 3600
+  "expires_in": 3600,
+  "scope": "mcp"
 }
 ```
 
 Other changes:
 
-- **Discovery:** the authorization server metadata adds the token-exchange grant to `grant_types_supported` when a provider is configured.
-- **Rejected combinations:** `authorization_code` and `refresh_token` requests from a `line` client get `unauthorized_client`. Token exchange from a staff client gets the same error.
-- **Logging:** successful exchanges log the client and a masked subject, `line:U4af…9c`, never the full ID.
+- **Discovery:** the authorization server metadata adds the token-exchange grant to `grant_types_supported` when the LINE provider is configured.
+- **Rejected combinations:** `authorization_code` and `refresh_token` requests from a `line` client get `unauthorized_client`. Token exchange from a `none` client gets the same error.
+- **Logging:** successful exchanges log the client and a masked subject, never the full ID.
 
-## Middleware changes
+## Subject lookup
 
-In `middlewares/mcp-oauth.ts`, for `POST /mcp`:
+This is a new public method on the `oauth` service. It's the contract for tool plugins such as Maison:
 
-1. **Always delete `x-mcp-subject` from the incoming headers first,** before any other check and whatever token is presented. This is what makes the header trustworthy.
-2. On a plugin access token, `resolveAccessToken` now also returns `subject`. After the existing admin-key swap, if the grant has a subject, set `ctx.request.headers['x-mcp-subject'] = subject`. That's the same header object core reads, so it reaches tool handlers through `requestInfo.headers`.
-3. Everything else is unchanged: 401 with `WWW-Authenticate`, and pass-through for plain admin tokens.
+```ts
+// strapi.plugin('strapi-oauth-mcp-manager').service('oauth')
+resolveSubject(authorization: string | string[] | undefined): Promise<string | null>
+```
 
-The header name is exported as `MCP_SUBJECT_HEADER` and documented in the README as the contract for tool plugins.
+- Takes the raw `Authorization` header value a tool sees in `extra.requestInfo.headers.authorization`. That's the caller's original header, because tools see raw headers.
+- Returns the grant's `subject` when the header is `Bearer <plugin access token>`, the grant exists, it hasn't expired, and it has a subject.
+- Returns `null` for anything else: no header, an array value, a plain admin token, an unknown or expired token, or a staff grant.
+- **Read-only:** no `lastUsedAt` write and no revocation side effects. The middleware already did those for the same request.
+
+The middleware itself is unchanged apart from dropping the unused `ctx.state.mcpOAuthGrantId`. It never sets or strips identity headers.
 
 ## Admin page changes
 
-- **Client form:** a "Customer sign-in" selector (`None` or `LINE`). Choosing LINE forces "public client" and requires a mapped token. A hint explains that every customer session runs with that token's permissions, so it should be narrow.
+- **Client form:**
+  - a "Customer sign-in" selector (`None` or `LINE`)
+  - choosing LINE hides the confidential option (the client is public), hides the redirect URIs field, and requires a mapped token
+  - a hint explains that every customer session runs with that token's permissions, so it should be narrow
 - **Sessions list:** a masked Subject column. Existing revoke actions apply to customer sessions too.
 - **Connection details:** show the token endpoint and the exchange parameters when a LINE client exists.
 
 ## Security properties
 
-- A customer session can do exactly what the mapped admin token can do, and only as that subject (enforced by the tools reading the header). Keep the mapped token narrow.
+- A customer session can do exactly what the mapped admin token allows. Tool plugins scope it to the customer by calling `resolveSubject`, which can't be spoofed because it depends only on the session token itself. Keep the mapped token narrow.
 - A LINE ID token issued to another channel fails verification (`aud` and `client_id` checks), so a token from another app can't be exchanged.
 - A captured ID token can be exchanged until it expires, as with any bearer token. Session tokens last at most `endUserAccessTokenTtl`.
 - There are existing kill switches: deactivate the client, delete or regenerate the mapped token, revoke sessions.
@@ -141,24 +165,25 @@ The header name is exported as `MCP_SUBJECT_HEADER` and documented in the README
 This is documented, not built. Browser apps call the token endpoint and `/mcp` cross-origin, so the host app configures `strapi::cors`:
 
 - `origin`: the app's origin
-- `headers`: `Authorization`, `Content-Type`, `Accept`, `Mcp-Protocol-Version`
-- `expose`: `WWW-Authenticate`
+- `methods`: `GET, POST, DELETE, OPTIONS`
+- `headers`: `Content-Type`, `Authorization`, `Accept`, `mcp-session-id`, `mcp-protocol-version`, `Last-Event-ID`
+- `expose`: `WWW-Authenticate`, `mcp-session-id`, `mcp-protocol-version`
 
 ## Testing
 
 - **Unit tests** (`node --test` with tsx, in the existing style):
   - LINE provider: success, wrong `aud`, expired, malformed `sub`, 4xx, network error, all with `fetch` mocked
-  - client validation: a `line` client must be public and mapped
-  - the token-exchange branch of the token handler
-- **E2e** (a new `test/e2e/line-exchange.mjs`, with the provider stubbed by a test-only config pointing `verifyUrl` at a local mock server):
-  - exchange returns a token; `/mcp` `tools/list` with it shows only the mapped token's tools
-  - a request carrying a spoofed `x-mcp-subject` reaches tools with the verified subject, or none for plain admin tokens
-  - a staff client can't use the exchange; a `line` client can't use `authorization_code`
+  - client rules: a `line` client is forced public, must be mapped, can't be unmapped, and doesn't need redirect URIs
+  - token exchange: success creates a grant with the subject and `refreshExpiresAt = expiresAt`; each check's error code
+  - `resolveSubject`: valid customer grant, staff grant, expired grant, unknown token, plain admin token, missing header, array header
+- **E2e** (a new `test/e2e/line-exchange.mjs`, with verification pointed at a local mock LINE server through `verifyUrl`):
+  - exchange returns a token, and `/mcp` `tools/list` with it shows only the mapped token's tools
+  - a `none` client can't use the exchange, and a `line` client can't use `authorization_code`
   - revoking the client kills the session
 - **Existing e2e suites** still pass unchanged.
 
 ## Release
 
-- `CHANGELOG.md` gets a 1.1.0 entry covering the additions, the new fields and config, and "no breaking changes".
-- The README gets a "Customer sign-in with LINE" section: setup, LIFF snippet, CORS, and the header contract.
+- `CHANGELOG.md` gets a 1.1.0 entry covering the additions, the new fields and config, the `resolveSubject` contract, and "no breaking changes".
+- The README gets a "Customer sign-in with LINE" section: setup, LIFF snippet, CORS, and "Using the customer identity in your tools" (`resolveSubject`).
 - Version 1.1.0, published after the demo integration passes.

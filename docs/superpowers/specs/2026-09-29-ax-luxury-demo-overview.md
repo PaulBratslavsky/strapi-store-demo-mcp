@@ -2,7 +2,9 @@
 
 - **Date:** 2026-09-29
 - **Status:** Draft for review
-- **Talk:** "Content Infrastructure for the AI Era: Building Experiences for Humans and AI", LINE × QBurst Japan, about 20 minutes with a 3-minute demo
+- **Talk:** "Content Infrastructure for the AI Era: Building Experiences for Humans and AI"
+- **Event:** "Building the AI-Powered Connected Experience" by QBurst with LY Corporation. **7 October 2026**, LY Corporation office, Akasaka Trust Tower, Tokyo. Invitation-only, for senior CX, marketing and product leaders. The event's themes include "MINI App integrations with AI-enabled tools and content management systems". LY Corporation's talk covers LINE MINI App and Agent i, and the panel includes LVMH Japan's IT Digital Director.
+- **Slot:** 6:00–6:15 PM JST (15 minutes) with a 3-minute demo
 - **Sub-project specs:**
   1. [Maison plugin](2026-09-29-maison-plugin-design.md): content types, MCP tools and seed data
   2. [oauth-mcp-manager 1.1](2026-09-29-oauth-mcp-manager-line-design.md): LINE sign-in for customers
@@ -42,9 +44,10 @@ The demo maps to the brief's six AX needs:
 | Demo story | Concierge with a human gate: draft, staff publish, LINE delivery by an ops agent | Shows UX, AX, permissions, the human gate and delivery in one flow |
 | Data access | Everything goes through Strapi's built-in MCP server, catalog screens included | The talk's point: the tools are the interface for both kinds of consumer |
 | No second MCP server | Extend Strapi's MCP with custom tools; the phone speaks MCP to Strapi's `/mcp` directly | Official extension points only |
-| Customer identity | New LINE token exchange in `strapi-oauth-mcp-manager` 1.1; a trusted `x-mcp-subject` header reaches tools | Reuses the existing OAuth-for-MCP plugin, and keeps identity out of the model's hands |
+| Customer identity | New LINE token exchange in `strapi-oauth-mcp-manager` 1.1. Tools ask its `resolveSubject(authorization)` which LINE user holds the caller's session token. | Reuses the existing OAuth-for-MCP plugin and keeps identity out of the model's hands. Headers set by a middleware never reach tools (the MCP transport reads raw headers), so no identity header is used. |
 | Packaging | Two plugins: Maison (domain) and oauth-mcp-manager (identity). LaunchPad hosts them. | Portable to any Strapi app; each plugin extends independently |
-| LINE channel | A LIFF app on a LINE Login channel now, a LINE Mini App channel later | Mini App channels are limited to organizations and residents in Japan, Taiwan and Thailand; the code is the same |
+| LINE channel | **Present as a LINE MINI App** on a channel provided by LY/QBurst: an unverified MINI App channel plus a Messaging API channel under one provider, requested now. Develop meanwhile on a LIFF app under the presenter's own provider. | The event is about MINI Apps. The presenter can't create a MINI App channel (Japan-registered organizations and residents only). The code is identical; only the channel ID and LIFF ID change. |
+| Confirmation channel | Official Account push through LINE Bot MCP, not MINI App service messages | Service messages need a *verified* MINI App and reviewed templates, which isn't possible in time. Mentioned on stage as the production path. |
 | Delivery | An ops agent (Claude Desktop) sends through LINE Bot MCP | The brief's Strapi MCP plus LINE Bot MCP pairing, with a live verification moment |
 | Timeline | Not tight: scope for a complete demo, rehearsed | The user's call |
 
@@ -78,7 +81,8 @@ flowchart LR
   APP -- "tools/call (screens)" --> OAUTH
   APP -- chat --> CON
   CON -- "tools/call (customer's token)" --> OAUTH
-  OAUTH -- "admin key + x-mcp-subject" --> MCP
+  OAUTH -- "swaps in the admin key" --> MCP
+  MAISON -- "resolveSubject(authorization)" --> OAUTH
   MCP --> MAISON
   ADMIN --> MAISON
   OPS -- "staff OAuth" --> OAUTH
@@ -109,7 +113,7 @@ flowchart LR
 
 ## Build order
 
-1. **Maison plugin** and **oauth-mcp-manager 1.1** can be built in parallel. Neither depends on the other's code; they share only the `x-mcp-subject` header contract (`line:U` followed by 32 hex characters).
+1. **Maison plugin** and **oauth-mcp-manager 1.1** can be built in parallel. They share one service contract: `strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(authorizationHeader)` returns `line:U` + 32 hex characters, or `null`. Maison's tests stub it; oauth-mcp-manager's tests exercise it.
 2. **LaunchPad integration, LIFF app and demo** need both plugins, the LINE channels and hosting.
 
 Each sub-project gets its own implementation plan.
@@ -119,12 +123,14 @@ Each sub-project gets its own implementation plan.
 | Item | Default or mitigation | Decide by |
 |---|---|---|
 | House name | Placeholder "Maison" (plugin id `maison`) | Before seed content is written |
-| Creating a LINE Official Account from a US-based account | Check first during LINE setup. Fallback: ask LINE/QBurst for a provider containing both channels. | Start of sub-project 3 |
+| MINI App channel from LY/QBurst (critical path) | Request today: one provider with an unverified MINI App channel and a Messaging API channel, with the presenter as admin. Fallback: present the LIFF app on the presenter's own channels. | 1 October 2026, to leave rehearsal time |
+| Creating the presenter's own Official Account (development and fallback) from a US-based account | Check first during LINE setup | Start of sub-project 3 |
+| Time: 8 days to the event | Build order below. If time runs short, cut the admin demo page (seed by script instead), the failure beat, and English UI copy, in that order. Never cut the demo scenario itself. | Daily |
 | Hosting LaunchPad's Strapi | A Strapi Cloud project for the fork | Start of sub-project 3 |
 | Concierge model and provider wiring | Claude Sonnet 5 through the AI SDK, confirmed against installed docs in the plan | Plan for sub-project 3 |
 | Relations between non-localized, draft/publish and localized types in Strapi 5.55 | Verified in the first task of the Maison plan. Fallback: store slugs instead of relations. | First task of sub-project 1 |
 | Whether MCP prompts can be permission-gated | If not, the prompt holds instructions only and no data, so exposing it is harmless | Sub-project 1 |
-| Moving to a LINE Mini App channel | Config change only, if the Mini App channel shares a LINE provider with the Official Account | When LINE/QBurst provide a channel |
+| Switching to the provided MINI App channel | Config change only (channel ID and LIFF ID). The MINI App and Official Account must share a provider, or user IDs won't match for delivery. | When LY/QBurst provide the channels |
 
 ## Out of scope
 

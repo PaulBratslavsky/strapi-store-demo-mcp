@@ -129,10 +129,11 @@ Registered in `bootstrap` with `admin::permission` `actionProvider.registerMany`
 
 ## Identity contract
 
-- Tools that act for a customer read `requestInfo.headers['x-mcp-subject']` from the MCP handler context (`@strapi/core` `createMcpCapabilityHandlerContext`).
-- The value must match `^line:U[0-9a-f]{32}$`. Anything else, or no value, returns `not_signed_in`.
-- oauth-mcp-manager 1.1 guarantees the header can't be supplied by the caller. This plugin never accepts identity as a tool argument.
-- The helper is exposed as `strapi.plugin('maison').service('identity').getCustomerSubject(context)` so app-level tools can reuse it.
+- **Tools see the caller's original `Authorization` header.** Strapi's MCP transport builds `extra.requestInfo.headers` from the raw request (`rawHeaders`), so tools see the session token the client sent, not the admin key that oauth-mcp-manager swaps in for core's authentication. *A header set or deleted by a middleware never reaches tools, so no identity header is used.*
+- **Tools that act for a customer ask oauth-mcp-manager who holds that token:** `strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(authorization)`, which returns `line:U…` or `null` (oauth-mcp-manager 1.1 spec).
+- **The result must match `^line:U[0-9a-f]{32}$`.** Anything else, `null`, a plain admin token, or oauth-mcp-manager not being installed all return `not_signed_in`.
+- **A session token can't be forged,** so the identity can't be either. This plugin never accepts identity as a tool argument.
+- **The helper is exposed as `strapi.plugin('maison').service('identity').getCustomerSubject(extra)`,** so app-level tools can reuse it.
 
 ## Tool contract
 
