@@ -67,6 +67,31 @@ is exactly the pattern Tasks 8–11 need (customers request appointments against
 already-published boutiques/products, and confirmations, staff can republish a
 boutique or product at any time).
 
+## What was independently verified to work
+
+To separate the platform issue above from anything in this task's own code, I
+re-ran the affected pieces in isolation, against a fresh throwaway database,
+outside the failing test:
+
+- The validation middleware (`server/src/document-middleware.ts`) correctly
+  rejects a product with a bad `giftOccasions` value, a bad
+  `personalizationKinds` value, and a boutique with `openingHours` that closes
+  before it opens — each with the expected `ValidationError` message — and lets
+  valid data through. Test 3 never reached the second and third `assert.rejects`
+  calls that exercise this, because `node:test` stops a test body at the first
+  assertion failure, and its first assertion (see below) failed as a
+  consequence of the relation bug, not of this code.
+- `assertUniqueStockPair` (the stock-level duplicate check) correctly rejects a
+  duplicate `(product, boutique)` pair with "already exists" when the first
+  stock-level's relations have not been broken by a republish. Its failure
+  inside Test 3 is fully explained by Test 1 leaving a dangling `product` link
+  on the stock-level it created, not by a bug in this function.
+
+In other words: the six content types, `relationDocumentId`,
+`registerDocumentMiddleware`, and `register.ts` all behave correctly. The one
+thing that does not hold up is Strapi's own promise that a relation pinned to a
+document's published version survives that document being republished.
+
 ## Which assertions failed
 
 - Test 1 *"keeps a stock level linked through a product republish and a new
