@@ -47,7 +47,7 @@ These are the inputs the spec implies most likely to bite a real user. Each has 
 2. **Booking at exactly closing time.** 20:00 at a boutique that closes at 20:00 must be `boutique_closed`, and 19:59 accepted (Task 3).
 3. **Identity that isn't clean.** A `resolveSubject` result with uppercase hex or no `line:` prefix, an `Authorization` header that arrives as an array, a plain admin token, or oauth-mcp-manager not being installed must all be treated as not signed in, never as a customer (Tasks 2 and 7).
 4. **A product with no English localization.** An `en` read falls back to the `ja` version and reports `locale: "ja"`. It doesn't return `not_found` (Task 9).
-5. **Draft-only products leaking.** `search_products` must never return a product that was never published, and `get_product` on it returns `not_found` (Task 9).
+5. **Draft-only products leaking.** `search_products` must never return a product that was never published, and `view_product` on it returns `not_found` (Task 9).
 
 ---
 
@@ -239,11 +239,11 @@ export const ACTION = {
 export const TOOL_NAMES = [
   'browse_collections',
   'search_products',
-  'get_product',
-  'get_boutiques',
+  'view_product',
+  'find_boutiques',
   'request_appointment',
   'my_appointments',
-  'list_pending_confirmations',
+  'pending_confirmations',
   'record_confirmation',
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -1167,7 +1167,7 @@ describe('validateConfig', () => {
   it('accepts the defaults and a full valid config', () => {
     expect(() => validateConfig(defaultConfig)).not.toThrow();
     expect(() =>
-      validateConfig({ ...defaultConfig, liffUrl: 'https://liff.line.me/1234567890-AbCdEfGh', disabledTools: ['get_boutiques'] })
+      validateConfig({ ...defaultConfig, liffUrl: 'https://liff.line.me/1234567890-AbCdEfGh', disabledTools: ['find_boutiques'] })
     ).not.toThrow();
   });
 
@@ -2499,7 +2499,7 @@ git commit -m "feat: add bilingual demo seed data, images and admin seed/reset r
 
 **Files:**
 - Create: `server/src/domain/url.ts`, `server/src/services/catalog.ts`, `server/src/mcp/schemas.ts`
-- Create: `server/src/mcp/tools/browse-collections.ts`, `search-products.ts`, `get-product.ts`, `get-boutiques.ts`
+- Create: `server/src/mcp/tools/browse-collections.ts`, `search-products.ts`, `view-product.ts`, `find-boutiques.ts`
 - Modify: `server/src/services/index.ts`, `server/src/mcp/index.ts`
 - Test: `test/unit/url.test.ts`, `test/unit/catalog-tools.test.ts`, `test/unit/register-mcp.test.ts` (modify), `test/integration/catalog.test.mjs`
 
@@ -2806,8 +2806,8 @@ export const productCardOutput = z.object({
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 import { browseCollectionsTool } from '../../server/src/mcp/tools/browse-collections';
-import { getBoutiquesTool } from '../../server/src/mcp/tools/get-boutiques';
-import { getProductTool } from '../../server/src/mcp/tools/get-product';
+import { findBoutiquesTool } from '../../server/src/mcp/tools/find-boutiques';
+import { viewProductTool } from '../../server/src/mcp/tools/view-product';
 import { searchProductsTool } from '../../server/src/mcp/tools/search-products';
 import { fakeStrapi } from './fake-strapi';
 
@@ -2844,9 +2844,9 @@ describe('search_products', () => {
   });
 });
 
-describe('get_product', () => {
+describe('view_product', () => {
   it('returns not_found with a recovery hint for an unknown slug', async () => {
-    const result = await run(getProductTool, { getProduct: vi.fn(async () => null) }, { slug: 'nope' });
+    const result = await run(viewProductTool, { getProduct: vi.fn(async () => null) }, { slug: 'nope' });
     const { error } = JSON.parse(result.content[0].text);
     expect(result.isError).toBe(true);
     expect(error.code).toBe('not_found');
@@ -2861,23 +2861,23 @@ describe('get_product', () => {
       images: [{ url: 'https://cms.example.test/uploads/a.png', alt: 'Weekender 50' }], occasions: ['travel'],
       collection: { slug: 'voyage', name: 'ヴォヤージュ' }, stock: [{ boutique: 'ginza', name: '銀座本店', quantity: 2 }],
     };
-    const result = await run(getProductTool, { getProduct: vi.fn(async () => product) }, { slug: 'weekender-50' });
+    const result = await run(viewProductTool, { getProduct: vi.fn(async () => product) }, { slug: 'weekender-50' });
     expect(result.structuredContent).toEqual({ product });
-    expect(() => matchesOutput(getProductTool, result)).not.toThrow();
+    expect(() => matchesOutput(viewProductTool, result)).not.toThrow();
   });
 });
 
-describe('get_boutiques', () => {
+describe('find_boutiques', () => {
   it('returns schema-valid output with openOnDate', async () => {
     const boutique = {
       slug: 'osaka', name: '大阪心斎橋店', city: '大阪', address: '…', hours: [{ weekday: 'mon', opens: '11:00', closes: '20:00' }],
       openOnDate: false, hoursOnDate: null, stock: [{ product: 'weekender-50', quantity: 0 }],
     };
     const getBoutiques = vi.fn(async () => [boutique]);
-    const result = await run(getBoutiquesTool, { getBoutiques }, { date: '2026-10-06', productSlugs: ['weekender-50'] });
+    const result = await run(findBoutiquesTool, { getBoutiques }, { date: '2026-10-06', productSlugs: ['weekender-50'] });
     expect(getBoutiques).toHaveBeenCalledWith('ja', { date: '2026-10-06', productSlugs: ['weekender-50'] });
     expect(result.structuredContent.date).toBe('2026-10-06');
-    expect(() => matchesOutput(getBoutiquesTool, result)).not.toThrow();
+    expect(() => matchesOutput(findBoutiquesTool, result)).not.toThrow();
   });
 });
 ```
@@ -2887,11 +2887,21 @@ Add this case inside the `describe('registerMcp')` block of `test/unit/register-
 ```ts
   it('registers every enabled tool and skips the ones in disabledTools', () => {
     const mcp = fakeMcp(true);
-    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['get_boutiques'] } }));
+    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['find_boutiques'] } }));
     const names = mcp.registerTool.mock.calls.map(([tool]) => tool.name);
-    expect(names).toEqual(['browse_collections', 'search_products', 'get_product']);
+    expect(names).toEqual(['browse_collections', 'search_products', 'view_product']);
+  });
+
+  it('never claims a name Strapi generates for content types', () => {
+    // Content Manager registers list_/get_/create_/update_/delete_/publish_/unpublish_/write_/discard_
+    // tools for every content type in the host app (get_product for api::product.product), and a
+    // duplicate name stops Strapi from booting.
+    const generated = /^(list|get|create|update|delete|publish|unpublish|write|discard)_/;
+    expect(TOOL_NAMES.filter((name) => generated.test(name))).toEqual([]);
   });
 ```
+
+Add `import { TOOL_NAMES } from '../../server/src/constants';` to that file's imports.
 
 - [ ] **Step 6: Run them to verify they fail**
 
@@ -2952,7 +2962,7 @@ const input = z.object({
   minPriceJpy: z.number().int().min(0).optional(),
   maxPriceJpy: z.number().int().min(0).optional().describe('Budget ceiling in whole yen.'),
   personalizable: z.boolean().optional().describe('Only pieces that can be personalized (initials, stripes, colors).'),
-  inStockAt: slugInput.optional().describe('Boutique slug from get_boutiques: only pieces in stock there now.'),
+  inStockAt: slugInput.optional().describe('Boutique slug from find_boutiques: only pieces in stock there now.'),
   locale: localeInput,
   limit: z.number().int().min(1).max(20).optional().describe('Maximum results, default 8.'),
 });
@@ -2976,7 +2986,7 @@ export const searchProductsTool = defineTool({
 });
 ```
 
-`server/src/mcp/tools/get-product.ts`:
+`server/src/mcp/tools/view-product.ts`:
 
 ```ts
 import { z } from '@strapi/utils';
@@ -3004,8 +3014,8 @@ const product = z.object({
   stock: z.array(z.object({ boutique: z.string(), name: z.string(), quantity: z.number() })),
 });
 
-export const getProductTool = defineTool({
-  name: 'get_product',
+export const viewProductTool = defineTool({
+  name: 'view_product',
   title: 'Get product details',
   description:
     'Full details for one published product: description, craft story, dimensions, personalization options and stock per boutique. Use the slug from search_products.',
@@ -3023,7 +3033,7 @@ export const getProductTool = defineTool({
 });
 ```
 
-`server/src/mcp/tools/get-boutiques.ts`:
+`server/src/mcp/tools/find-boutiques.ts`:
 
 ```ts
 import { z } from '@strapi/utils';
@@ -3040,8 +3050,8 @@ const input = z.object({
   locale: localeInput,
 });
 
-export const getBoutiquesTool = defineTool({
-  name: 'get_boutiques',
+export const findBoutiquesTool = defineTool({
+  name: 'find_boutiques',
   title: 'Get boutiques',
   description:
     'Lists boutiques with opening hours, whether each is open on a given date, and stock for up to five products. Use it before requesting an appointment.',
@@ -3082,8 +3092,8 @@ import type { Core } from '@strapi/strapi';
 import { getConfig } from '../config';
 import type { ToolName } from '../constants';
 import { browseCollectionsTool } from './tools/browse-collections';
-import { getBoutiquesTool } from './tools/get-boutiques';
-import { getProductTool } from './tools/get-product';
+import { findBoutiquesTool } from './tools/find-boutiques';
+import { viewProductTool } from './tools/view-product';
 import { searchProductsTool } from './tools/search-products';
 
 /** Must run in register(): Strapi locks the MCP capability set when the server starts. */
@@ -3098,8 +3108,8 @@ export const registerMcp = (strapi: Core.Strapi) => {
 
   if (enabled('browse_collections')) mcp.registerTool(browseCollectionsTool);
   if (enabled('search_products')) mcp.registerTool(searchProductsTool);
-  if (enabled('get_product')) mcp.registerTool(getProductTool);
-  if (enabled('get_boutiques')) mcp.registerTool(getBoutiquesTool);
+  if (enabled('view_product')) mcp.registerTool(viewProductTool);
+  if (enabled('find_boutiques')) mcp.registerTool(findBoutiquesTool);
 };
 ```
 
@@ -3436,7 +3446,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
 
       const boutique = await publishedBySlug(UID.boutique, input.boutique, defaultLocale);
       if (!boutique) {
-        return failure('not_found', `No boutique "${input.boutique}".`, 'Call get_boutiques to find valid boutique slugs.');
+        return failure('not_found', `No boutique "${input.boutique}".`, 'Call find_boutiques to find valid boutique slugs.');
       }
       const products: Doc[] = [];
       for (const slug of [...new Set(input.productSlugs)]) {
@@ -3461,8 +3471,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       if (!check.open) {
         const day = `${DAY_NAMES[check.weekday]} ${check.isoDate}`;
         const hint = check.entry
-          ? `${boutique.name} is open ${check.entry.opens}–${check.entry.closes} (${timezone}) on ${day}. Suggest a time in that window, or another day; get_boutiques shows hours for a date.`
-          : `${boutique.name} is closed all day on ${day}. Suggest another day; get_boutiques shows hours for a date.`;
+          ? `${boutique.name} is open ${check.entry.opens}–${check.entry.closes} (${timezone}) on ${day}. Suggest a time in that window, or another day; find_boutiques shows hours for a date.`
+          : `${boutique.name} is closed all day on ${day}. Suggest another day; find_boutiques shows hours for a date.`;
         return failure('boutique_closed', `${boutique.name} is not open at ${toZonedIso(when, timezone)}.`, hint);
       }
 
@@ -3642,7 +3652,7 @@ describe('my_appointments', () => {
 Also update the registration case in `test/unit/register-mcp.test.ts` so it expects the two new tools:
 
 ```ts
-    expect(names).toEqual(['browse_collections', 'search_products', 'get_product', 'request_appointment', 'my_appointments']);
+    expect(names).toEqual(['browse_collections', 'search_products', 'view_product', 'request_appointment', 'my_appointments']);
 ```
 
 - [ ] **Step 8: Run them to verify they fail**
@@ -3664,7 +3674,7 @@ import { defineTool } from '../define';
 import { appointmentOutput, isoDateTimeInput, slugInput } from '../schemas';
 
 const input = z.object({
-  boutique: slugInput.describe('Boutique slug from get_boutiques, e.g. "ginza".'),
+  boutique: slugInput.describe('Boutique slug from find_boutiques, e.g. "ginza".'),
   productSlugs: z.array(slugInput).min(1).max(5).describe('One to five product slugs the customer wants to see.'),
   requestedFor: isoDateTimeInput.describe('Visit start, ISO 8601 with a time zone offset, e.g. 2026-10-10T14:00:00+09:00.'),
   note: z.string().max(500).optional().describe("The customer's own words for the boutique, e.g. who the gift is for."),
@@ -3674,7 +3684,7 @@ export const requestAppointmentTool = defineTool({
   name: 'request_appointment',
   title: 'Request a boutique appointment',
   description:
-    'Requests a boutique visit for the signed-in customer. It creates a request that a boutique must confirm; never tell the customer it is confirmed. Check opening hours with get_boutiques first. The customer comes from their LINE sign-in, never from an argument.',
+    'Requests a boutique visit for the signed-in customer. It creates a request that a boutique must confirm; never tell the customer it is confirmed. Check opening hours with find_boutiques first. The customer comes from their LINE sign-in, never from an argument.',
   auth: { policies: [{ action: ACTION.appointmentsRequest }] },
   resolveInputSchema: () => input,
   resolveOutputSchema: () => z.object({ appointment: appointmentOutput }),
@@ -3726,7 +3736,7 @@ export const myAppointmentsTool = defineTool({
 });
 ```
 
-In `server/src/mcp/index.ts`, add the imports and two registration lines after `get_product`:
+In `server/src/mcp/index.ts`, add the imports and two registration lines after `view_product`:
 
 ```ts
 import { myAppointmentsTool } from './tools/my-appointments';
@@ -3738,7 +3748,7 @@ import { requestAppointmentTool } from './tools/request-appointment';
   if (enabled('my_appointments')) mcp.registerTool(myAppointmentsTool);
 ```
 
-The registration order becomes `browse_collections`, `search_products`, `get_product`, `get_boutiques`, `request_appointment`, `my_appointments`.
+The registration order becomes `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `request_appointment`, `my_appointments`.
 
 - [ ] **Step 10: Run the unit tests and type checks**
 
@@ -3865,7 +3875,7 @@ git commit -m "feat: add appointment requests and my_appointments for signed-in 
 ### Task 11: Confirmations service, the two ops tools and the prompt
 
 **Files:**
-- Create: `server/src/services/confirmations.ts`, `server/src/mcp/tools/list-pending-confirmations.ts`, `server/src/mcp/tools/record-confirmation.ts`, `server/src/mcp/prompts/send-pending-confirmations.ts`, `test/fixtures/line-flex-message-schema.mjs` (vendored)
+- Create: `server/src/services/confirmations.ts`, `server/src/mcp/tools/pending-confirmations.ts`, `server/src/mcp/tools/record-confirmation.ts`, `server/src/mcp/prompts/send-pending-confirmations.ts`, `test/fixtures/line-flex-message-schema.mjs` (vendored)
 - Modify: `server/src/services/index.ts`, `server/src/mcp/index.ts`, `server/src/bootstrap.ts`, `test/unit/register-mcp.test.ts`
 - Test: `test/unit/confirmation-tools.test.ts`, `test/unit/line-contract.test.ts`, `test/integration/confirmations.test.mjs`
 
@@ -3879,7 +3889,7 @@ git commit -m "feat: add appointment requests and my_appointments for signed-in 
 - Produces:
   - service `confirmations.listPending(limit: number): Promise<ServiceResult<PendingConfirmation[]>>`
   - service `confirmations.record({ reference, status: 'sent' | 'failed', detail }): Promise<ServiceResult<{ notification: { reference; status; sentAt; detail }; alreadyRecorded: boolean }>>`
-  - tools `list_pending_confirmations`, `record_confirmation`, and the prompt `send_pending_confirmations`, all gated on `plugin::maison.confirmations.send`
+  - tools `pending_confirmations`, `record_confirmation`, and the prompt `send_pending_confirmations`, all gated on `plugin::maison.confirmations.send`
 
 Strapi 5.55.1 prompts accept `auth.policies` (`McpAuthAccess` in `@strapi/types`), so the prompt is visible only to tokens that hold `confirmations.send`. That settles the spec's open question.
 
@@ -3943,7 +3953,7 @@ describe('LINE Bot MCP contract', () => {
 import { describe, expect, it, vi } from 'vitest';
 import { buildConfirmationMessage } from '../../server/src/domain/flex-message';
 import { sendPendingConfirmationsPrompt } from '../../server/src/mcp/prompts/send-pending-confirmations';
-import { listPendingConfirmationsTool } from '../../server/src/mcp/tools/list-pending-confirmations';
+import { pendingConfirmationsTool } from '../../server/src/mcp/tools/pending-confirmations';
 import { recordConfirmationTool } from '../../server/src/mcp/tools/record-confirmation';
 import { fakeStrapi } from './fake-strapi';
 
@@ -3967,17 +3977,17 @@ const pending = {
   }),
 };
 
-describe('list_pending_confirmations', () => {
+describe('pending_confirmations', () => {
   it('defaults the limit to 10 and returns schema-valid output', async () => {
     const listPending = vi.fn(async () => ({ ok: true, value: [pending] }));
-    const result = await listPendingConfirmationsTool.createHandler(withConfirmations({ listPending }), context)({ args: {}, extra: {} });
+    const result = await pendingConfirmationsTool.createHandler(withConfirmations({ listPending }), context)({ args: {}, extra: {} });
     expect(listPending).toHaveBeenCalledWith(10);
-    expect(listPendingConfirmationsTool.resolveOutputSchema(context).parse(result.structuredContent)).toEqual({ appointments: [pending] });
+    expect(pendingConfirmationsTool.resolveOutputSchema(context).parse(result.structuredContent)).toEqual({ appointments: [pending] });
   });
 
   it('reports not_configured when the plugin has no liffUrl', async () => {
     const listPending = vi.fn(async () => ({ ok: false, code: 'not_configured', message: 'No liffUrl.', hint: 'Set liffUrl.' }));
-    const result = await listPendingConfirmationsTool.createHandler(withConfirmations({ listPending }), context)({ args: { limit: 3 }, extra: {} });
+    const result = await pendingConfirmationsTool.createHandler(withConfirmations({ listPending }), context)({ args: { limit: 3 }, extra: {} });
     expect(listPending).toHaveBeenCalledWith(3);
     expect(errorOf(result).code).toBe('not_configured');
   });
@@ -4016,7 +4026,7 @@ describe('send_pending_confirmations prompt', () => {
     expect(sendPendingConfirmationsPrompt.auth.policies).toEqual([{ action: 'plugin::maison.confirmations.send' }]);
     const result = await (sendPendingConfirmationsPrompt.createHandler(fakeStrapi()) as any)({});
     const text: string = result.messages[0].content.text;
-    const order = ['list_pending_confirmations', 'get_profile', 'push_flex_message', 'record_confirmation'].map((name) => text.indexOf(name));
+    const order = ['pending_confirmations', 'get_profile', 'push_flex_message', 'record_confirmation'].map((name) => text.indexOf(name));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).toMatch(/200/);
@@ -4030,11 +4040,11 @@ Update the registration case in `test/unit/register-mcp.test.ts` to expect all t
 ```ts
   it('registers every enabled tool and skips the ones in disabledTools', () => {
     const mcp = fakeMcp(true);
-    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['get_boutiques'] } }));
+    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['find_boutiques'] } }));
     const names = mcp.registerTool.mock.calls.map(([tool]) => tool.name);
     expect(names).toEqual([
-      'browse_collections', 'search_products', 'get_product',
-      'request_appointment', 'my_appointments', 'list_pending_confirmations', 'record_confirmation',
+      'browse_collections', 'search_products', 'view_product',
+      'request_appointment', 'my_appointments', 'pending_confirmations', 'record_confirmation',
     ]);
     expect(mcp.registerPrompt.mock.calls.map(([prompt]) => prompt.name)).toEqual(['send_pending_confirmations']);
   });
@@ -4172,7 +4182,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         fields: ['documentId', 'reference'],
       })) as Doc | null;
       if (!appointment) {
-        return failure('not_found', `No appointment ${input.reference}.`, 'Use a reference from list_pending_confirmations.');
+        return failure('not_found', `No appointment ${input.reference}.`, 'Use a reference from pending_confirmations.');
       }
       const published = await strapi.documents(UID.appointment).count({
         status: 'published',
@@ -4182,7 +4192,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         return failure(
           'not_published',
           `Appointment ${input.reference} has not been confirmed by the boutique.`,
-          'Only published appointments get confirmations. Do not message the customer; call list_pending_confirmations for the ones to send.'
+          'Only published appointments get confirmations. Do not message the customer; call pending_confirmations for the ones to send.'
         );
       }
       if (input.status === 'sent') {
@@ -4231,7 +4241,7 @@ export default {
 
 - [ ] **Step 5: Implement the two tools**
 
-`server/src/mcp/tools/list-pending-confirmations.ts`:
+`server/src/mcp/tools/pending-confirmations.ts`:
 
 ```ts
 import { z } from '@strapi/utils';
@@ -4254,8 +4264,8 @@ const pendingOutput = z.object({
     .describe("Pass unchanged as push_flex_message's message."),
 });
 
-export const listPendingConfirmationsTool = defineTool({
-  name: 'list_pending_confirmations',
+export const pendingConfirmationsTool = defineTool({
+  name: 'pending_confirmations',
   title: 'List pending confirmations',
   description:
     'Lists appointments that staff have confirmed (published) but whose LINE confirmation has not been sent, each with the LINE user ID and a ready-made LINE flex message. Requests still waiting for staff are never listed. Deliver with LINE Bot MCP, then call record_confirmation.',
@@ -4313,9 +4323,9 @@ import { definePrompt } from '../define';
 
 export const SEND_PENDING_CONFIRMATIONS_TEXT = `Send LINE confirmations for boutique appointments that staff have confirmed.
 
-You have two MCP servers: this Strapi server (list_pending_confirmations, record_confirmation) and the LINE Bot MCP server (get_profile, push_flex_message).
+You have two MCP servers: this Strapi server (pending_confirmations, record_confirmation) and the LINE Bot MCP server (get_profile, push_flex_message).
 
-1. Call list_pending_confirmations.
+1. Call pending_confirmations.
 2. For each appointment, in order:
    a. Call get_profile with userId set to its lineUserId.
    b. If get_profile fails, do not push. Call record_confirmation with status "failed" and detail "not reachable: not a friend or blocked".
@@ -4325,7 +4335,7 @@ You have two MCP servers: this Strapi server (list_pending_confirmations, record
 
 Why check first: LINE's push API returns 200 even when a message can't be delivered (the customer isn't a friend of the account, or blocked it). get_profile fails for those customers, so it is the reachability check. Never report a confirmation as sent unless get_profile and push_flex_message both succeeded.
 Always pass userId explicitly; LINE Bot MCP otherwise sends to its default user.
-If list_pending_confirmations returns not_configured, stop and report its hint.`;
+If pending_confirmations returns not_configured, stop and report its hint.`;
 
 export const sendPendingConfirmationsPrompt = definePrompt({
   name: 'send_pending_confirmations',
@@ -4344,12 +4354,12 @@ In `server/src/mcp/index.ts`, add the imports and the lines after `my_appointmen
 
 ```ts
 import { sendPendingConfirmationsPrompt } from './prompts/send-pending-confirmations';
-import { listPendingConfirmationsTool } from './tools/list-pending-confirmations';
+import { pendingConfirmationsTool } from './tools/pending-confirmations';
 import { recordConfirmationTool } from './tools/record-confirmation';
 ```
 
 ```ts
-  if (enabled('list_pending_confirmations')) mcp.registerTool(listPendingConfirmationsTool);
+  if (enabled('pending_confirmations')) mcp.registerTool(pendingConfirmationsTool);
   if (enabled('record_confirmation')) mcp.registerTool(recordConfirmationTool);
   mcp.registerPrompt(sendPendingConfirmationsPrompt);
 ```
@@ -4358,7 +4368,7 @@ In `server/src/bootstrap.ts`, add `import { getConfig } from './config';` and ap
 
 ```ts
   if (!getConfig(strapi).liffUrl) {
-    strapi.log.warn('[maison] config.liffUrl is not set, so list_pending_confirmations will return not_configured.');
+    strapi.log.warn('[maison] config.liffUrl is not set, so pending_confirmations will return not_configured.');
   }
 ```
 
@@ -4762,9 +4772,9 @@ describe('Maison over /mcp', () => {
 
   it('shows each token only the tools its permissions allow', async () => {
     assert.deepEqual(await toolNames(customer), [
-      'browse_collections', 'get_boutiques', 'get_product', 'my_appointments', 'request_appointment', 'search_products',
+      'browse_collections', 'find_boutiques', 'view_product', 'my_appointments', 'request_appointment', 'search_products',
     ]);
-    assert.deepEqual(await toolNames(ops), ['list_pending_confirmations', 'record_confirmation']);
+    assert.deepEqual(await toolNames(ops), ['pending_confirmations', 'record_confirmation']);
   });
 
   it('shows the ops prompt only to the ops token', async () => {
@@ -4786,7 +4796,7 @@ describe('Maison over /mcp', () => {
   });
 
   it('returns not_found with a hint for an unknown product', async () => {
-    const result = await customer.callTool({ name: 'get_product', arguments: { slug: 'no-such-piece' } });
+    const result = await customer.callTool({ name: 'view_product', arguments: { slug: 'no-such-piece' } });
     assert.equal(result.isError, true);
     assert.equal(errorOf(result).code, 'not_found');
     assert.match(errorOf(result).hint, /search_products/);
@@ -4803,7 +4813,7 @@ describe('Maison over /mcp', () => {
   });
 
   it('lets the ops token list and record, and refuses unknown references', async () => {
-    const pending = await ops.callTool({ name: 'list_pending_confirmations', arguments: {} });
+    const pending = await ops.callTool({ name: 'pending_confirmations', arguments: {} });
     assert.ok(!pending.isError, JSON.stringify(pending.content));
     assert.ok(Array.isArray(pending.structuredContent.appointments));
     const unknown = await ops.callTool({ name: 'record_confirmation', arguments: { reference: 'APT-0000', status: 'sent', detail: 'smoke test' } });
@@ -4814,7 +4824,7 @@ describe('Maison over /mcp', () => {
 
 - [ ] **Step 4: Run the smoke tests against LaunchPad**
 
-LaunchPad's dev server needs `MAISON_LIFF_URL` set, or `list_pending_confirmations` answers `not_configured`. Local development uses the app's local URL. Add it if it's missing, then restart Strapi:
+LaunchPad's dev server needs `MAISON_LIFF_URL` set, or `pending_confirmations` answers `not_configured`. Local development uses the app's local URL. Add it if it's missing, then restart Strapi:
 
 ```bash
 cd /Users/paul/work/launchpad-fork-latest/strapi
@@ -4886,7 +4896,7 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 
 | Key | Default | Purpose |
 |---|---|---|
-| `liffUrl` | `null` | Base of the links in LINE confirmations, e.g. `https://liff.line.me/<LIFF ID>`. Use `http://localhost:<port>` for local development. Until it's set, `list_pending_confirmations` answers `not_configured`. |
+| `liffUrl` | `null` | Base of the links in LINE confirmations, e.g. `https://liff.line.me/<LIFF ID>`. Use `http://localhost:<port>` for local development. Until it's set, `pending_confirmations` answers `not_configured`. |
 | `timezone` | `Asia/Tokyo` | Opening-hours checks and the times in messages |
 | `defaultLocale` | `ja` | Content language when a tool call doesn't pass `locale` (`ja` or `en`) |
 | `maxOpenRequestsPerCustomer` | `3` | Unconfirmed future requests a customer may have |
@@ -4899,11 +4909,11 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 |---|---|---|
 | `browse_collections` | MCP: browse the catalog | Published collections, with a teaser and product count |
 | `search_products` | MCP: browse the catalog | Products by collection, category, gift occasion, price, personalization and boutique stock |
-| `get_product` | MCP: browse the catalog | One product: story, dimensions, personalization, stock per boutique |
-| `get_boutiques` | MCP: browse the catalog | Boutiques, opening hours, open on a date, stock for chosen products |
+| `view_product` | MCP: browse the catalog | One product: story, dimensions, personalization, stock per boutique |
+| `find_boutiques` | MCP: browse the catalog | Boutiques, opening hours, open on a date, stock for chosen products |
 | `request_appointment` | MCP: request and view own appointments | Creates a **draft** visit request for the signed-in customer |
 | `my_appointments` | MCP: request and view own appointments | The signed-in customer's own requests and confirmations |
-| `list_pending_confirmations` | MCP: send appointment confirmations | Confirmed visits not yet sent, each with a ready LINE flex message |
+| `pending_confirmations` | MCP: send appointment confirmations | Confirmed visits not yet sent, each with a ready LINE flex message |
 | `record_confirmation` | MCP: send appointment confirmations | Records whether a LINE confirmation was delivered |
 
 The **`send_pending_confirmations` prompt** tells an ops agent how to deliver confirmations with [LINE Bot MCP](https://github.com/line/line-bot-mcp-server). It checks that each customer is reachable (`get_profile`) before pushing, because LINE's push API answers 200 even when it can't deliver.

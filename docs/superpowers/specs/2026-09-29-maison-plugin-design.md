@@ -146,6 +146,7 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 - **Reads** take `locale` (`ja` | `en`, default from config) and return **published** content only.
 - **Errors** don't throw. They return `{ isError: true, content: [{ type: 'text', text }] }`, where `text` is JSON: `{ "error": { "code", "message", "hint" } }`. Core passes `isError` through (`toSdkMcpCapabilityResult.js`); thrown errors would become a generic message.
 - **Error codes:** `not_signed_in`, `not_found`, `invalid_input`, `boutique_closed`, `in_the_past`, `too_many_open_requests`, `not_published`, `not_configured`.
+- **Names** never start with `list_`, `get_`, `create_`, `update_`, `delete_`, `publish_`, `unpublish_`, `write_` or `discard_`. Strapi's Content Manager generates tools with those prefixes for every content type in the host app (for example `get_product` for LaunchPad's `api::product.product`), and a duplicate name stops Strapi from booting.
 - **Descriptions** say when to use the tool and what it won't do. For example, `request_appointment`: "Creates a request that a boutique must confirm; never tell the customer it is confirmed."
 
 ### Catalog: `catalog.read`
@@ -154,8 +155,8 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 |---|---|---|
 | `browse_collections` | `locale?` | `{ locale, collections: [{ slug, name, teaser, heroImageUrl, productCount }] }`. `teaser` is the first 160 characters of `story` as plain text. |
 | `search_products` | `query?` (≤100 chars; name and description match), `collection?`, `category?`, `occasion?`, `minPriceJpy?`, `maxPriceJpy?`, `personalizable?`, `inStockAt?` (boutique slug), `locale?`, `limit?` (1–20, default 8) | `{ locale, total, products: [{ slug, name, category, priceJpy, imageUrl, occasions, personalizable, inStockAt: [boutiqueSlug] }] }`, sorted by price, highest first |
-| `get_product` | `slug`, `locale?` | `{ product: { slug, sku, name, category, priceJpy, description (plain text), craftStory, dimensionsCm \| null, personalization: { offered, kinds, leadDays }, images: [{ url, alt }], occasions, collection: { slug, name }, stock: [{ boutique, name, quantity }] } }`. `not_found` if missing. |
-| `get_boutiques` | `productSlugs?` (≤5), `date?` (`YYYY-MM-DD`), `locale?` | `{ date, boutiques: [{ slug, name, city, address, hours, openOnDate, hoursOnDate, stock: [{ product, quantity }] }] }`. `openOnDate` and `hoursOnDate` are `null` without `date`. |
+| `view_product` | `slug`, `locale?` | `{ product: { slug, sku, name, category, priceJpy, description (plain text), craftStory, dimensionsCm \| null, personalization: { offered, kinds, leadDays }, images: [{ url, alt }], occasions, collection: { slug, name }, stock: [{ boutique, name, quantity }] } }`. `not_found` if missing. |
+| `find_boutiques` | `productSlugs?` (≤5), `date?` (`YYYY-MM-DD`), `locale?` | `{ date, boutiques: [{ slug, name, city, address, hours, openOnDate, hoursOnDate, stock: [{ product, quantity }] }] }`. `openOnDate` and `hoursOnDate` are `null` without `date`. |
 
 ### Appointments: `appointments.request`, signed-in customer required
 
@@ -179,7 +180,7 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 
 ### Confirmations: `confirmations.send`
 
-`list_pending_confirmations`
+`pending_confirmations`
 
 - **Input:** `limit?` (1–20, default 10)
 - **Returns:** published appointments with no `sent` notification.
@@ -204,7 +205,7 @@ Registered with `strapi.ai.mcp.registerPrompt` and gated on `confirmations.send`
 
 The text tells the agent to:
 
-1. Call `list_pending_confirmations`.
+1. Call `pending_confirmations`.
 2. For each appointment, call LINE Bot MCP's `get_profile` with `lineUserId`.
 3. If that fails, call `record_confirmation` with `failed` and `detail: "not reachable: not a friend or blocked"`, and don't push.
 4. Otherwise call `push_flex_message` with `message.altText` and `message.contents`, then `record_confirmation` with `sent` and LINE's response as `detail`.
@@ -276,7 +277,7 @@ admin/src/               Maison page (seed and reset buttons)
   - a customer token lists only the six customer tools, and an ops token only the two ops tools (plus core's built-in `log` tool, which appears in development mode only)
   - `request_appointment` without a subject returns `not_signed_in`, and with one creates a draft owned by that subject
   - `my_appointments` never returns another subject's data
-  - `list_pending_confirmations` ignores drafts
+  - `pending_confirmations` ignores drafts
   - `record_confirmation` refuses drafts, and a second `sent` returns `alreadyRecorded`
   - each error code returns its hint
 - **Seed:** running it twice creates nothing the second time; reset leaves the catalog intact.

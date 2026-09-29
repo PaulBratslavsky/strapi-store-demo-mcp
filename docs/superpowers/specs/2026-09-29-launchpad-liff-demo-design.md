@@ -103,7 +103,7 @@ The locale comes from `liff.getAppLanguage()`: `ja*` gives `ja`, anything else `
 |---|---|---|
 | `/` | `browse_collections` | House wordmark, collections, "Ask the concierge" button |
 | `/collections/[slug]` | `search_products({ collection })` | Product grid with price and badges |
-| `/products/[slug]` | `get_product`, `get_boutiques({ productSlugs })` | Images, price, craft story, personalization and stock by boutique. A "Book a visit" sheet (boutique, date, time, note) calls `request_appointment`. |
+| `/products/[slug]` | `view_product`, `find_boutiques({ productSlugs })` | Images, price, craft story, personalization and stock by boutique. A "Book a visit" sheet (boutique, date, time, note) calls `request_appointment`. |
 | `/concierge` | through `/api/concierge` | Chat with tool chips and product cards |
 | `/visits` and `/visits/[reference]` | `my_appointments` | Statuses: awaiting boutique, confirmed, confirmation sent. `/visits/[reference]` is where the LINE message's button leads. |
 
@@ -168,7 +168,7 @@ On a screen wider than 500 px, the app renders inside a phone-sized frame on a d
 
 - **Claude Desktop, server 1: Maison.** Strapi's `/mcp` through `mcp-remote`, a local stdio bridge, with the "Maison ops" token as a bearer header. It reaches `localhost` and needs no consent page. Custom connectors added in Claude's settings are reached from Anthropic's cloud, so they need a public URL; use them only with option B.
 - **Server 2, LINE Bot MCP (option A only):** `npx @line/line-bot-mcp-server` with `CHANNEL_ACCESS_TOKEN`, and no `DESTINATION_USER_ID`, because every push names its recipient.
-- **Default run:** ask "Which confirmed visits still need a LINE confirmation?" The agent calls `list_pending_confirmations` and shows the visit and its ready-made message.
+- **Default run:** ask "Which confirmed visits still need a LINE confirmation?" The agent calls `pending_confirmations` and shows the visit and its ready-made message.
 - **Option A run:** pick the `send_pending_confirmations` prompt.
 
 ## Part E: The demo run

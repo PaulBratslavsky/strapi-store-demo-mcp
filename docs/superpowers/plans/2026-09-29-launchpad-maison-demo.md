@@ -2170,10 +2170,10 @@ git commit -m "feat(liff): add the catalog and visits screens with the agent vie
 - Create: `liff/components/booking-sheet.tsx`, `liff/app/products/[slug]/page.tsx`
 
 **Interfaces:**
-- Consumes: `useTool`, `useMaison`, `Screen`, `StatusNote`, `ProductImage`, `COPY`, `yen`, `nextSaturday`, `tomorrow`, `timeSlots`, `toolErrorOf` (Tasks 4 and 5). Tools: `get_product`, `get_boutiques({ productSlugs, date })`, `request_appointment`.
+- Consumes: `useTool`, `useMaison`, `Screen`, `StatusNote`, `ProductImage`, `COPY`, `yen`, `nextSaturday`, `tomorrow`, `timeSlots`, `toolErrorOf` (Tasks 4 and 5). Tools: `view_product`, `find_boutiques({ productSlugs, date })`, `request_appointment`.
 - Produces: `/products/[slug]`, and `<BookingSheet product onClose>`, which on success navigates to `/visits?ref=<reference>`.
 
-The sheet checks opening hours with `get_boutiques` for the chosen date before it lets the customer send. A closed day shows a message and disables the button, so `boutique_closed` from the tool is only a backstop.
+The sheet checks opening hours with `find_boutiques` for the chosen date before it lets the customer send. A closed day shows a message and disables the button, so `boutique_closed` from the tool is only a backstop.
 
 - [ ] **Step 1: Write `liff/components/booking-sheet.tsx`**
 
@@ -2204,7 +2204,7 @@ export function BookingSheet({ product, onClose }: { product: Product; onClose: 
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<ToolError | null>(null);
 
-  const availability = useTool<{ boutiques: BoutiqueInfo[] }>('product', 'get_boutiques', { productSlugs: [product.slug], date, locale });
+  const availability = useTool<{ boutiques: BoutiqueInfo[] }>('product', 'find_boutiques', { productSlugs: [product.slug], date, locale });
   const boutiques = availability.data?.boutiques ?? [];
   const chosen = boutiques.find((candidate) => candidate.slug === boutique);
   const open = chosen?.openOnDate === true;
@@ -2324,12 +2324,12 @@ export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
   const { locale } = useMaison();
   const t = COPY[locale];
-  const product = useTool<{ product: Product }>('product', 'get_product', { slug, locale });
+  const product = useTool<{ product: Product }>('product', 'view_product', { slug, locale });
   const [booking, setBooking] = useState(false);
   const item = product.data?.product;
 
   return (
-    <Screen name="product" tools={['get_product', 'get_boutiques', 'request_appointment']}>
+    <Screen name="product" tools={['view_product', 'find_boutiques', 'request_appointment']}>
       <StatusNote loading={product.loading} error={product.error} retry={product.retry} />
       {item && (
         <article>
@@ -2387,7 +2387,7 @@ Expected:
 1. The product shows its price (￥385,000), craft story, personalization, and stock with Ginza at 2.
 2. "来店を予約" opens the sheet, set to next Saturday at Ginza, 14:00. Sending it lands on "ご来店予約", with the new visit marked "ブティックの確認待ち".
 3. Choosing 大阪心斎橋店 on a Tuesday shows the closed message, and the send button is disabled.
-4. The agent view on the product screen lists `get_product`, `get_boutiques` and `request_appointment`.
+4. The agent view on the product screen lists `view_product`, `find_boutiques` and `request_appointment`.
 
 - [ ] **Step 4: Commit**
 
@@ -2758,7 +2758,7 @@ import { Screen } from '@/components/screen';
 import { COPY } from '@/lib/copy';
 import { getMaison } from '@/lib/maison';
 
-const CONCIERGE_TOOLS = ['browse_collections', 'search_products', 'get_product', 'get_boutiques', 'request_appointment', 'my_appointments'];
+const CONCIERGE_TOOLS = ['browse_collections', 'search_products', 'view_product', 'find_boutiques', 'request_appointment', 'my_appointments'];
 
 export default function ConciergePage() {
   const { locale } = useMaison();
@@ -2868,7 +2868,7 @@ cd /Users/paul/work/launchpad-fork-latest/liff && yarn typecheck && yarn dev
 Open `http://localhost:3003/concierge`, and tap the first suggestion.
 
 Expected:
-1. Chips appear: `search_products ✓ 5件`, maybe `get_boutiques ✓`. Up to three product cards follow, starting with the Weekender 50.
+1. Chips appear: `search_products ✓ 5件`, maybe `find_boutiques ✓`. Up to three product cards follow, starting with the Weekender 50.
 2. The reply is short, in keigo, and restates the Ginza Saturday 14:00 visit, asking for a yes.
 3. Tap "はい、お願いします。". A `request_appointment ✓` chip and an appointment card say "ブティックの確認待ち". The reply says the boutique will confirm on LINE, and never says confirmed.
 4. In the Strapi admin (`http://localhost:1340/admin`), under Content Manager → Maison appointment, the new draft shows `createdVia: concierge`.
@@ -3027,7 +3027,7 @@ git commit -m "test(liff): add browser tests for booking, the agent view and cus
 - Create: `docs/maison-demo/README.md`
 
 **Interfaces:**
-- Consumes: `strapi/.tmp/maison-ops-token` (Task 2); the tools `list_pending_confirmations`, `record_confirmation` and the `send_pending_confirmations` prompt (Maison plugin)
+- Consumes: `strapi/.tmp/maison-ops-token` (Task 2); the tools `pending_confirmations`, `record_confirmation` and the `send_pending_confirmations` prompt (Maison plugin)
 - Produces:
   - the runbook: setup, the 3-minute run, fallbacks, options A and B, and the QBurst handoff
   - a rehearsed demo
@@ -3076,7 +3076,7 @@ Everything runs on one laptop: Strapi, the Maison app on port 3003, and a local 
    }
    ```
 
-   Use Strapi's real port in the URL. Check that the connector lists `list_pending_confirmations` and `record_confirmation`.
+   Use Strapi's real port in the URL. Check that the connector lists `pending_confirmations` and `record_confirmation`.
 
 ## Before going on stage
 
@@ -3151,9 +3151,9 @@ A **LINE MINI App** is the same app on a MINI App channel, which needs a Japan-r
 
   It returns `{ access_token, expires_in }`, with no refresh token.
 - **MCP:** `POST {STRAPI}/mcp` with `Authorization: Bearer <access_token>`.
-  - Customer tools: `browse_collections`, `search_products`, `get_product`, `get_boutiques`, `request_appointment`, `my_appointments`
+  - Customer tools: `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `request_appointment`, `my_appointments`
   - Errors come back as `{ error: { code, message, hint } }`.
-- **Confirmation:** `list_pending_confirmations` returns each LINE user ID with a flex message, ready for the Messaging API.
+- **Confirmation:** `pending_confirmations` returns each LINE user ID with a flex message, ready for the Messaging API.
 - **Channels:** the MINI App channel and the Messaging API channel must be in one provider.
 ````
 
@@ -3164,7 +3164,7 @@ Paste the ops token from `strapi/.tmp/maison-ops-token` into the Claude Desktop 
 1. Book a visit in the app, and publish it in the Strapi admin.
 2. In Claude Desktop, ask: "Which confirmed visits still need a LINE confirmation?"
 
-Expected: Claude calls `list_pending_confirmations`, and shows the visit's reference, `10月…(土) 14:00`, 銀座本店 and the flex message. Its tool list has only `list_pending_confirmations` and `record_confirmation`, plus `log` in development. It can't find a tool to publish or edit content.
+Expected: Claude calls `pending_confirmations`, and shows the visit's reference, `10月…(土) 14:00`, 銀座本店 and the flex message. Its tool list has only `pending_confirmations` and `record_confirmation`, plus `log` in development. It can't find a tool to publish or edit content.
 
 - [ ] **Step 3: Rehearse the run**
 
