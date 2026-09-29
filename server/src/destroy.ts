@@ -1,3 +1,5 @@
 import type { Core } from '@strapi/strapi';
 
-export const destroy = async (_ctx: { strapi: Core.Strapi }) => {};
+const destroy = async ({ strapi: _strapi }: { strapi: Core.Strapi }) => {};
+
+export default destroy;

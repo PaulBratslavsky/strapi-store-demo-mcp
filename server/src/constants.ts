@@ -1,18 +1,42 @@
-export const PLUGIN_ID = 'store-analytics';
+export const PLUGIN_ID = 'maison';
 
-export const ORDER_UID = 'api::order.order';
-export const PRODUCT_UID = 'api::product.product';
-export const STORE_SETTING_UID = 'api::store-setting.store-setting';
+export const UID = {
+  collection: 'plugin::maison.collection',
+  product: 'plugin::maison.product',
+  boutique: 'plugin::maison.boutique',
+  stockLevel: 'plugin::maison.stock-level',
+  appointment: 'plugin::maison.appointment',
+  notification: 'plugin::maison.notification',
+} as const;
 
-export const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'] as const;
-export const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'] as const;
+/** Full action UIDs, as stored on admin tokens and checked by tool auth policies. */
+export const ACTION = {
+  catalogRead: 'plugin::maison.catalog.read',
+  appointmentsRequest: 'plugin::maison.appointments.request',
+  confirmationsSend: 'plugin::maison.confirmations.send',
+  demoManage: 'plugin::maison.demo.manage',
+} as const;
 
-export const READ_PERMISSION_UID = 'read';
-export const MCP_AUTH_ACTION = `plugin::${PLUGIN_ID}.${READ_PERMISSION_UID}`;
+export const TOOL_NAMES = [
+  'browse_collections',
+  'search_products',
+  'get_product',
+  'get_boutiques',
+  'request_appointment',
+  'my_appointments',
+  'list_pending_confirmations',
+  'record_confirmation',
+] as const;
+export type ToolName = (typeof TOOL_NAMES)[number];
 
-export type Currency = 'USD' | 'EUR' | 'GBP';
+export const LOCALES = ['ja', 'en'] as const;
+export type Locale = (typeof LOCALES)[number];
 
-export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
-export const DEFAULT_CURRENCY: Currency = 'USD';
-export const DEFAULT_STORE_NAME = 'Demo Store';
-export const ORDERS_PAGE_SIZE = 1000;
+export const CATEGORIES = ['trunk', 'bag', 'small-leather', 'travel', 'objet'] as const;
+export const OCCASIONS = ['travel', 'anniversary', 'birthday', 'wedding', 'new-job'] as const;
+export const PERSONALIZATION_KINDS = ['initials-hot-stamp', 'hand-painted-stripes', 'monogram-color'] as const;
+
+/** Provides resolveSubject(authorization) for customer identity (oauth-mcp-manager 1.1). */
+export const OAUTH_PLUGIN_ID = 'strapi-oauth-mcp-manager';
+/** Informational only: which surface made the call ("concierge" or absent). Never used for identity. */
+export const SURFACE_HEADER = 'x-maison-surface';

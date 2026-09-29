@@ -1,14 +1,5 @@
 import type { Core } from '@strapi/strapi';
 
-import { PLUGIN_ID, READ_PERMISSION_UID } from './constants';
+const bootstrap = async ({ strapi: _strapi }: { strapi: Core.Strapi }) => {};
 
-export const bootstrap = async ({ strapi }: { strapi: Core.Strapi }) => {
-  await strapi.service('admin::permission').actionProvider.registerMany([
-    {
-      section: 'plugins',
-      displayName: 'Access store analytics',
-      uid: READ_PERMISSION_UID,
-      pluginName: PLUGIN_ID,
-    },
-  ]);
-};
+export default bootstrap;
