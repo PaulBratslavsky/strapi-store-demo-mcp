@@ -17,4 +17,11 @@ describe('registerMcp', () => {
     expect(() => registerMcp(strapi)).not.toThrow();
     expect(strapi.log.warn).toHaveBeenCalled();
   });
+
+  it('registers every enabled tool and skips the ones in disabledTools', () => {
+    const mcp = fakeMcp(true);
+    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['get_boutiques'] } }));
+    const names = mcp.registerTool.mock.calls.map(([tool]) => tool.name);
+    expect(names).toEqual(['browse_collections', 'search_products', 'get_product']);
+  });
 });
