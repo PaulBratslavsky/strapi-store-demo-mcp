@@ -49,7 +49,6 @@ All six types set `pluginOptions['content-manager'].visible = true`, so staff ca
 | `personalizationLeadDays` | integer, min 0 | no | |
 | `giftOccasions` | JSON | no | Array of `travel`, `anniversary`, `birthday`, `wedding`, `new-job` |
 | `collection` | relation, many-to-one → `collection` | — | `inversedBy: products` |
-| `stockLevels` | relation, one-to-many → `stock-level` | — | `mappedBy: product` |
 
 ### `boutique`: draft & publish, localized
 
@@ -61,14 +60,13 @@ All six types set `pluginOptions['content-manager'].visible = true`, so staff ca
 | `address` | text | yes | |
 | `openingHours` | JSON, required | no | `[{ "weekday": "mon", "opens": "11:00", "closes": "20:00" }, …]`. A weekday that's missing means closed. |
 | `image` | media, single image | no | |
-| `stockLevels` | relation, one-to-many → `stock-level` | — | `mappedBy: boutique` |
 
 ### `stock-level`: no drafts, not localized
 
 | Field | Type | Notes |
 |---|---|---|
-| `product` | relation, many-to-one → `product` | `inversedBy: stockLevels` |
-| `boutique` | relation, many-to-one → `boutique` | `inversedBy: stockLevels` |
+| `productSlug` | string, required | The product's slug. A string, not a relation (see the relation check below). |
+| `boutiqueSlug` | string, required | The boutique's slug |
 | `quantity` | integer, required, min 0 | |
 
 One row per product and boutique pair, enforced by the validation middleware below.
@@ -86,13 +84,12 @@ Publishing an appointment **is** the staff confirmation.
 | `requestedFor` | datetime, required | |
 | `customerNote` | text, max 500 | |
 | `createdVia` | enumeration: `concierge`, `app` | Informational |
-| `notifications` | relation, one-to-many → `notification` | `mappedBy: appointment` |
 
 ### `notification`: no drafts, not localized, append-only
 
 | Field | Type | Notes |
 |---|---|---|
-| `appointment` | relation, many-to-one → `appointment` | `inversedBy: notifications` |
+| `appointmentReference` | string, required | The appointment's `reference`. A string, not a relation (see the relation check below). |
 | `channel` | enumeration: `line` | |
 | `outcome` | enumeration: `sent`, `failed` | Named `outcome` because `status` is a reserved attribute name in Strapi 5. Tools still call it `status`. |
 | `sentAt` | datetime | When the outcome was recorded |
@@ -115,6 +112,12 @@ Before building on these relations, verify on Strapi 5.55.1 how relations behave
 - whether it survives publishing
 
 **Fallback if that's unworkable:** store `boutiqueSlug`, `productSlugs` and `productSlug` strings instead of relations, and resolve them in services. Tool contracts don't change either way.
+
+**Result (29 September 2026), recorded in `docs/relation-check.md`:**
+- **Republishing breaks relations from types without draft/publish.** `publish()` deletes and recreates a document's published row. A relation from a stock level or notification to that row is left pointing at nothing, silently.
+- **Relations between two draft/publish types survive.** Appointment → boutique and products, and product → collection, survive publishing and republishing.
+
+So stock levels store `productSlug` and `boutiqueSlug`, notifications store `appointmentReference`, and appointments and products keep their relations.
 
 ## Permissions
 

@@ -70,7 +70,6 @@ server/src/domain/text.ts                      create: blocks → plain text, te
 server/src/domain/reference.ts                 create: APT-#### generator
 server/src/domain/flex-message.ts              create: LINE flex bubble builder
 server/src/domain/validation.ts                create: JSON enum-array validation
-server/src/domain/relations.ts                 create: relation value → documentId
 server/src/domain/url.ts                       create: absolute media URLs
 server/src/domain/service-result.ts            create: ok/failure results for services
 server/src/content-types/index.ts              create
@@ -1294,21 +1293,31 @@ git commit -m "feat: add maison plugin configuration with validation"
 
 ### Task 6: Content types, validation middleware and the relation check
 
-This task carries the spec's first-task requirement: prove that relations behave across locales and draft/publish on Strapi 5.55.1 before building on them. All relations are bidirectional (`inversedBy`/`mappedBy`), like LaunchPad's own schemas. The inverse sides `boutique.appointments` and `product.appointments` are added for that reason. `sku` and `reference` get no `unique` flag: Strapi doesn't create a database index for it, and its validator would compare across locales. The services enforce uniqueness where it matters.
+This task carries the spec's first-task requirement: check how relations behave across locales and draft/publish on Strapi 5.55.1 before building on them. The check found:
+- **Relations from a type without draft/publish break when their target is republished.** Strapi's `publish()` deletes and recreates a document's published row, so a stock level or notification that points at a published row is left pointing at nothing, with no error. `docs/relation-check.md` records the evidence.
+- **Relations between two draft/publish types survive.** Appointment → boutique and products, and product → collection, survive publishing and republishing.
+
+So, per the spec's fallback:
+- **Stock levels** store `productSlug` and `boutiqueSlug`.
+- **Notifications** store `appointmentReference`.
+- **Appointments and products** keep their relations.
+
+Tool contracts don't change.
+
+Relations are bidirectional (`inversedBy`/`mappedBy`), like LaunchPad's own schemas. `sku` and `reference` get no `unique` flag: Strapi doesn't create a database index for it, and its validator would compare across locales. The services and the middleware enforce uniqueness where it matters.
 
 The notification's delivery field is named `outcome`, not `status` as in the spec's table: `status` is a reserved attribute name in Strapi 5 (`contentTypes.getReservedAttributeNames()` in `@strapi/utils` 5.55.1), because the Document Service uses `status` for draft/published. Tool inputs and outputs still say `status`; only the stored field differs.
 
 **Files:**
 - Create: `server/src/content-types/{collection,product,boutique,stock-level,appointment,notification}/schema.json`, and an `index.ts` for each
 - Rewrite: `server/src/content-types/index.ts`, `server/src/register.ts`
-- Create: `server/src/domain/relations.ts`, `server/src/document-middleware.ts`
-- Test: `test/unit/relations.test.ts`, `test/integration/harness.mjs`, `test/integration/relations.test.mjs`
+- Create: `server/src/document-middleware.ts`, `docs/relation-check.md` (the evidence behind the design above)
+- Test: `test/integration/harness.mjs`, `test/integration/relations.test.mjs`
 
 **Interfaces:**
 - Consumes: `UID`, `OCCASIONS`, `PERSONALIZATION_KINDS` (Task 1), `validateOpeningHours` (Task 3), `validateEnumArray` (Task 4)
 - Produces:
-  - content types `plugin::maison.{collection,product,boutique,stock-level,appointment,notification}`
-  - `relationDocumentId(value: unknown): string | null`
+  - content types `plugin::maison.{collection,product,boutique,stock-level,appointment,notification}`. Stock levels have `productSlug`, `boutiqueSlug` and `quantity`; notifications have `appointmentReference`, `channel`, `outcome`, `sentAt`, `detail` and `recordedBy`.
   - `registerDocumentMiddleware(strapi)`
   - `bootStrapi(name: string): Promise<Strapi>`, `SUBJECT_A`, `SUBJECT_B` from `test/integration/harness.mjs`
 
@@ -1359,7 +1368,6 @@ The notification's delivery field is named `outcome`, not `status` as in the spe
     "personalizationLeadDays": { "type": "integer", "min": 0, "pluginOptions": { "i18n": { "localized": false } } },
     "giftOccasions": { "type": "json", "pluginOptions": { "i18n": { "localized": false } } },
     "collection": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.collection", "inversedBy": "products" },
-    "stockLevels": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.stock-level", "mappedBy": "product" },
     "appointments": { "type": "relation", "relation": "manyToMany", "target": "plugin::maison.appointment", "mappedBy": "products" }
   }
 }
@@ -1381,7 +1389,6 @@ The notification's delivery field is named `outcome`, not `status` as in the spe
     "address": { "type": "text", "pluginOptions": { "i18n": { "localized": true } } },
     "openingHours": { "type": "json", "required": true, "pluginOptions": { "i18n": { "localized": false } } },
     "image": { "type": "media", "multiple": false, "allowedTypes": ["images"], "pluginOptions": { "i18n": { "localized": false } } },
-    "stockLevels": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.stock-level", "mappedBy": "boutique" },
     "appointments": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.appointment", "mappedBy": "boutique" }
   }
 }
@@ -1393,12 +1400,12 @@ The notification's delivery field is named `outcome`, not `status` as in the spe
 {
   "kind": "collectionType",
   "collectionName": "maison_stock_levels",
-  "info": { "singularName": "stock-level", "pluralName": "stock-levels", "displayName": "Maison stock level", "description": "How many of a product a boutique holds." },
+  "info": { "singularName": "stock-level", "pluralName": "stock-levels", "displayName": "Maison stock level", "description": "How many of a product a boutique holds, keyed by the two slugs." },
   "options": { "draftAndPublish": false },
   "pluginOptions": { "content-manager": { "visible": true }, "content-type-builder": { "visible": false } },
   "attributes": {
-    "product": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.product", "inversedBy": "stockLevels" },
-    "boutique": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.boutique", "inversedBy": "stockLevels" },
+    "productSlug": { "type": "string", "required": true },
+    "boutiqueSlug": { "type": "string", "required": true },
     "quantity": { "type": "integer", "required": true, "min": 0, "default": 0 }
   }
 }
@@ -1420,8 +1427,7 @@ The notification's delivery field is named `outcome`, not `status` as in the spe
     "products": { "type": "relation", "relation": "manyToMany", "target": "plugin::maison.product", "inversedBy": "appointments" },
     "requestedFor": { "type": "datetime", "required": true },
     "customerNote": { "type": "text", "maxLength": 500 },
-    "createdVia": { "type": "enumeration", "enum": ["concierge", "app"], "default": "app" },
-    "notifications": { "type": "relation", "relation": "oneToMany", "target": "plugin::maison.notification", "mappedBy": "appointment" }
+    "createdVia": { "type": "enumeration", "enum": ["concierge", "app"], "default": "app" }
   }
 }
 ```
@@ -1436,7 +1442,7 @@ The notification's delivery field is named `outcome`, not `status` as in the spe
   "options": { "draftAndPublish": false },
   "pluginOptions": { "content-manager": { "visible": true }, "content-type-builder": { "visible": false } },
   "attributes": {
-    "appointment": { "type": "relation", "relation": "manyToOne", "target": "plugin::maison.appointment", "inversedBy": "notifications" },
+    "appointmentReference": { "type": "string", "required": true },
     "channel": { "type": "enumeration", "enum": ["line"], "default": "line", "required": true },
     "outcome": { "type": "enumeration", "enum": ["sent", "failed"], "required": true },
     "sentAt": { "type": "datetime", "required": true },
@@ -1476,57 +1482,7 @@ export default {
 };
 ```
 
-- [ ] **Step 3: Write the failing unit test `test/unit/relations.test.ts`**
-
-```ts
-import { describe, expect, it } from 'vitest';
-import { relationDocumentId } from '../../server/src/domain/relations';
-
-describe('relationDocumentId', () => {
-  it.each([
-    ['a bare documentId', 'abc123', 'abc123'],
-    ['a long-hand object', { documentId: 'abc123', locale: 'ja' }, 'abc123'],
-    ['connect with one entry', { connect: [{ documentId: 'abc123' }] }, 'abc123'],
-    ['set with one shorthand', { set: ['abc123'] }, 'abc123'],
-  ])('reads %s', (_label, value, expected) => {
-    expect(relationDocumentId(value)).toBe(expected);
-  });
-
-  it.each([
-    ['nothing', undefined],
-    ['null', null],
-    ['a numeric id', 42],
-    ['connect with two entries', { connect: [{ documentId: 'a' }, { documentId: 'b' }] }],
-  ])('returns null for %s', (_label, value) => {
-    expect(relationDocumentId(value)).toBeNull();
-  });
-});
-```
-
-- [ ] **Step 4: Run it to verify it fails**
-
-Run: `npx vitest run test/unit/relations.test.ts`
-Expected: FAIL with "Failed to resolve import".
-
-- [ ] **Step 5: Implement `server/src/domain/relations.ts`**
-
-```ts
-/** The target documentId of a to-one relation value in Document Service `data`, or null. */
-export function relationDocumentId(value: unknown): string | null {
-  if (typeof value === 'string') return value;
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    if (typeof record.documentId === 'string') return record.documentId;
-    for (const key of ['connect', 'set'] as const) {
-      const list = record[key];
-      if (Array.isArray(list) && list.length === 1) return relationDocumentId(list[0]);
-    }
-  }
-  return null;
-}
-```
-
-- [ ] **Step 6: Implement `server/src/document-middleware.ts`**
+- [ ] **Step 3: Implement `server/src/document-middleware.ts`**
 
 ```ts
 import type { Core } from '@strapi/strapi';
@@ -1534,7 +1490,6 @@ import { errors } from '@strapi/utils';
 
 import { OCCASIONS, PERSONALIZATION_KINDS, UID } from './constants';
 import { validateOpeningHours } from './domain/hours';
-import { relationDocumentId } from './domain/relations';
 import { validateEnumArray } from './domain/validation';
 
 type Data = Record<string, unknown>;
@@ -1562,11 +1517,10 @@ const validateBoutique = (data: Data) => {
 };
 
 const assertUniqueStockPair = async (strapi: Core.Strapi, data: Data) => {
-  const product = relationDocumentId(data.product);
-  const boutique = relationDocumentId(data.boutique);
-  if (!product || !boutique) return;
+  const { productSlug, boutiqueSlug } = data;
+  if (typeof productSlug !== 'string' || typeof boutiqueSlug !== 'string') return;
   const existing = await strapi.documents(UID.stockLevel).count({
-    filters: { product: { documentId: product }, boutique: { documentId: boutique } },
+    filters: { productSlug: { $eq: productSlug }, boutiqueSlug: { $eq: boutiqueSlug } },
   });
   if (existing > 0) fail('A stock level for this product and boutique already exists; update it instead.');
 };
@@ -1585,7 +1539,7 @@ export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
 };
 ```
 
-- [ ] **Step 7: Wire it in `server/src/register.ts`**
+- [ ] **Step 4: Wire it in `server/src/register.ts`**
 
 ```ts
 import type { Core } from '@strapi/strapi';
@@ -1599,12 +1553,12 @@ const register = ({ strapi }: { strapi: Core.Strapi }) => {
 export default register;
 ```
 
-- [ ] **Step 8: Run the unit tests and type checks**
+- [ ] **Step 5: Run the unit tests and type checks**
 
 Run: `npx vitest run && npm run test:ts:back`
 Expected: all pass, and tsc exits 0.
 
-- [ ] **Step 9: Create the integration harness `test/integration/harness.mjs`**
+- [ ] **Step 6: Create the integration harness `test/integration/harness.mjs`**
 
 It boots the app at `STRAPI_APP_DIR` with its own throwaway SQLite file per test file, so tests never touch the dev database.
 
@@ -1642,7 +1596,7 @@ export async function ensureLocales(strapi) {
 }
 ```
 
-- [ ] **Step 10: Write the relation check `test/integration/relations.test.mjs`**
+- [ ] **Step 7: Write the relation check `test/integration/relations.test.mjs`**
 
 ```js
 import assert from 'node:assert/strict';
@@ -1651,6 +1605,7 @@ import { after, before, describe, it } from 'node:test';
 import { SUBJECT_A, bootStrapi, ensureLocales } from './harness.mjs';
 
 const UID = {
+  collection: 'plugin::maison.collection',
   product: 'plugin::maison.product',
   boutique: 'plugin::maison.boutique',
   stock: 'plugin::maison.stock-level',
@@ -1679,18 +1634,9 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     await strapi?.destroy();
   });
 
-  it('keeps a stock level linked through a product republish and a new locale', async () => {
-    await strapi.documents(UID.stock).create({
-      data: {
-        product: { documentId: product, locale: 'ja', status: 'published' },
-        boutique: { documentId: boutique, locale: 'ja', status: 'published' },
-        quantity: 2,
-      },
-    });
-    const read = () => strapi.documents(UID.stock).findMany({
-      filters: { product: { documentId: product } },
-      populate: { product: { fields: ['documentId'] }, boutique: { fields: ['documentId'] } },
-    });
+  it('keys stock levels by slug, so republishing a product or adding a locale never orphans them', async () => {
+    await strapi.documents(UID.stock).create({ data: { productSlug: 'probe', boutiqueSlug: 'ginza', quantity: 2 } });
+    const read = () => strapi.documents(UID.stock).findMany({ filters: { productSlug: { $eq: 'probe' } } });
     assert.equal((await read()).length, 1);
 
     await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { priceJpy: 2000 } });
@@ -1699,9 +1645,9 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     await strapi.documents(UID.product).publish({ documentId: product, locale: 'en' });
 
     const rows = await read();
-    assert.equal(rows.length, 1, 'stock level is still found by product documentId');
-    assert.equal(rows[0].product?.documentId, product, 'relation still points at the product');
-    assert.equal(rows[0].boutique?.documentId, boutique);
+    assert.equal(rows.length, 1, 'the stock level is still found by product slug');
+    assert.equal(rows[0].boutiqueSlug, 'ginza');
+    assert.equal(rows[0].quantity, 2);
   });
 
   it('keeps an appointment linked when it is published and when its boutique is republished', async () => {
@@ -1730,31 +1676,44 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     const again = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
     assert.equal(again.boutique?.documentId, boutique, 'relation survives a boutique republish');
 
+    await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { priceJpy: 3000 } });
+    await strapi.documents(UID.product).publish({ documentId: product, locale: 'ja' });
+    const afterProduct = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
+    assert.equal(afterProduct.products?.[0]?.documentId, product, 'relation survives a product republish');
+
     await strapi.documents(UID.notification).create({
-      data: {
-        appointment: { documentId: created.documentId, status: 'published' },
-        channel: 'line', outcome: 'sent', sentAt: new Date().toISOString(), detail: 'probe', recordedBy: 'test',
-      },
+      data: { appointmentReference: 'APT-0001', channel: 'line', outcome: 'sent', sentAt: new Date().toISOString(), detail: 'probe', recordedBy: 'test' },
     });
-    const logged = () => strapi.documents(UID.notification).findMany({
-      filters: { appointment: { documentId: created.documentId } },
-    });
-    assert.equal((await logged()).length, 1, 'notification is found by appointment documentId');
+    const logged = () => strapi.documents(UID.notification).findMany({ filters: { appointmentReference: { $eq: 'APT-0001' } } });
+    assert.equal((await logged()).length, 1, 'notification is found by appointment reference');
 
     await strapi.documents(UID.appointment).update({ documentId: created.documentId, data: { customerNote: 'edited after confirmation' } });
     await strapi.documents(UID.appointment).publish({ documentId: created.documentId });
     assert.equal((await logged()).length, 1, 'notification survives a republish of its appointment');
+    const republished = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'published', populate });
+    assert.equal(republished.boutique?.documentId, boutique, 'the republished appointment keeps its boutique');
+    assert.equal(republished.products?.[0]?.documentId, product, 'and its product');
+  });
+
+  it('keeps a product in its collection when the collection is republished', async () => {
+    const collection = (await strapi.documents(UID.collection).create({
+      locale: 'ja', status: 'published', data: { name: '旅', slug: 'voyage-probe' },
+    })).documentId;
+    await strapi.documents(UID.product).update({ documentId: product, locale: 'ja', data: { collection } });
+    await strapi.documents(UID.product).publish({ documentId: product, locale: 'ja' });
+    const inCollection = () => strapi.documents(UID.product).findMany({
+      locale: 'ja', status: 'published', filters: { collection: { slug: { $eq: 'voyage-probe' } } }, fields: ['slug'],
+    });
+    assert.deepEqual((await inCollection()).map((p) => p.slug), ['probe']);
+
+    await strapi.documents(UID.collection).update({ documentId: collection, locale: 'ja', data: { name: '旅の品' } });
+    await strapi.documents(UID.collection).publish({ documentId: collection, locale: 'ja' });
+    assert.deepEqual((await inCollection()).map((p) => p.slug), ['probe'], 'the product stays in its collection');
   });
 
   it('applies the validation middleware', async () => {
     await assert.rejects(
-      strapi.documents(UID.stock).create({
-        data: {
-          product: { documentId: product, locale: 'ja', status: 'published' },
-          boutique: { documentId: boutique, locale: 'ja', status: 'published' },
-          quantity: 1,
-        },
-      }),
+      strapi.documents(UID.stock).create({ data: { productSlug: 'probe', boutiqueSlug: 'ginza', quantity: 1 } }),
       /already exists/
     );
     await assert.rejects(
@@ -1775,21 +1734,21 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
 });
 ```
 
-- [ ] **Step 11: Build, push to LaunchPad, and run the relation check**
+- [ ] **Step 8: Build, push to LaunchPad, and run the relation check**
 
 ```bash
 npm run link
 STRAPI_APP_DIR=/Users/paul/work/launchpad-fork-latest/strapi node --test test/integration/relations.test.mjs
 ```
 
-Expected: 3 passing tests. The first run takes about 30 seconds while Strapi compiles and creates the test database.
+Expected: 4 passing tests. The first run takes about 30 seconds while Strapi compiles and creates the test database.
 
-**If any relation assertion fails, stop here.** Copy the failing output into `docs/relation-check.md` and ask for a decision. The spec's fallback (slug strings instead of relations) changes Tasks 8–11, so don't improvise it. If only the last assertion fails (a republish drops the notification link), the likely decision is narrower: store the appointment's `reference` on the notification instead of a relation.
+**If an assertion about appointment or collection relations fails,** append the output to `docs/relation-check.md` and report BLOCKED. It would mean the slug fallback must extend to relations between draft/publish types too.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add server/src/content-types server/src/domain/relations.ts server/src/document-middleware.ts server/src/register.ts test/unit/relations.test.ts test/integration
+git add server/src/content-types server/src/document-middleware.ts server/src/register.ts test/integration docs/relation-check.md
 git commit -m "feat: add maison content types, validation middleware and relation checks"
 ```
 
@@ -2352,14 +2311,13 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       });
       if (existing) return { created: false, collections: 0, products: 0, boutiques: 0, stockLevels: 0 };
 
-      const boutiqueIds: Record<string, string> = {};
       for (const b of content.boutiques) {
         const image = await uploadImage(b.image, b.name.en);
         const version = (locale: 'ja' | 'en') => ({
           name: pick(b.name, locale), slug: b.slug, city: pick(b.city, locale), address: pick(b.address, locale),
           openingHours: b.openingHours, image,
         });
-        boutiqueIds[b.slug] = await createLocalized(UID.boutique, version('ja'), version('en'));
+        await createLocalized(UID.boutique, version('ja'), version('en'));
       }
 
       const collectionIds: Record<string, string> = {};
@@ -2369,7 +2327,6 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         collectionIds[c.slug] = await createLocalized(UID.collection, version('ja'), version('en'));
       }
 
-      const productIds: Record<string, string> = {};
       for (const p of content.products) {
         const images = [await uploadImage(p.image, p.name.en)];
         const [widthCm, heightCm, depthCm] = p.dimensionsCm;
@@ -2380,19 +2337,13 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           description: paragraph(pick(p.description, locale)), craftStory: pick(p.craftStory, locale),
           collection: collectionIds[p.collection],
         });
-        productIds[p.slug] = await createLocalized(UID.product, version('ja'), version('en'));
+        await createLocalized(UID.product, version('ja'), version('en'));
       }
 
       let stockLevels = 0;
       for (const [productSlug, perBoutique] of Object.entries(content.stock)) {
         for (const [boutiqueSlug, quantity] of Object.entries(perBoutique)) {
-          await strapi.documents(UID.stockLevel).create({
-            data: {
-              product: { documentId: productIds[productSlug], locale: 'ja', status: 'published' },
-              boutique: { documentId: boutiqueIds[boutiqueSlug], locale: 'ja', status: 'published' },
-              quantity,
-            },
-          });
+          await strapi.documents(UID.stockLevel).create({ data: { productSlug, boutiqueSlug, quantity } });
           stockLevels += 1;
         }
       }
@@ -2661,24 +2612,19 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return [...primary, ...extra.filter((doc) => !seen.has(doc.documentId))];
   };
 
-  /** product documentId → stock per boutique documentId. Stock levels have no drafts and no locales. */
+  /** product slug → stock per boutique slug. Stock levels have no drafts and no locales. */
   const stockByProduct = async (): Promise<Map<string, StockEntry[]>> => {
-    const rows = await strapi.documents(UID.stockLevel).findMany({
-      limit: 5000,
-      populate: { product: { fields: ['documentId'] }, boutique: { fields: ['documentId'] } },
-    });
+    const rows = await strapi.documents(UID.stockLevel).findMany({ limit: 5000, fields: ['productSlug', 'boutiqueSlug', 'quantity'] });
     const map = new Map<string, StockEntry[]>();
     for (const row of rows as Doc[]) {
-      const product = row.product?.documentId;
-      const boutique = row.boutique?.documentId;
-      if (!product || !boutique) continue;
-      map.set(product, [...(map.get(product) ?? []), { boutique, quantity: row.quantity ?? 0 }]);
+      map.set(row.productSlug, [...(map.get(row.productSlug) ?? []), { boutique: row.boutiqueSlug, quantity: row.quantity ?? 0 }]);
     }
     return map;
   };
 
-  const boutiquesById = async (locale: Locale) =>
-    new Map((await findPublished(UID.boutique, locale)).map((b) => [b.documentId as string, b]));
+  /** Published boutiques by slug. Stock for a boutique that isn't published is never shown. */
+  const boutiquesBySlug = async (locale: Locale) =>
+    new Map((await findPublished(UID.boutique, locale)).map((b) => [b.slug as string, b]));
 
   const toCard = (product: Doc, stock: StockEntry[] | undefined, boutiques: Map<string, Doc>): ProductCard => ({
     slug: product.slug,
@@ -2688,10 +2634,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     imageUrl: url(product.images?.[0]?.url),
     occasions: arrayOf(product.giftOccasions),
     personalizable: product.personalizable === true,
-    inStockAt: (stock ?? [])
-      .filter((entry) => entry.quantity > 0)
-      .map((entry) => boutiques.get(entry.boutique)?.slug)
-      .filter((slug): slug is string => typeof slug === 'string'),
+    inStockAt: (stock ?? []).filter((entry) => entry.quantity > 0 && boutiques.has(entry.boutique)).map((entry) => entry.boutique),
   });
 
   return {
@@ -2723,14 +2666,14 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       const [products, stock, boutiques] = await Promise.all([
         findPublished(UID.product, locale, { filters: where, populate: { images: true } }),
         stockByProduct(),
-        boutiquesById(locale),
+        boutiquesBySlug(locale),
       ]);
       const query = filters.query?.trim().toLowerCase();
       // JSON arrays and free text are filtered in memory: the catalog is small and this stays database-agnostic.
       let cards = products
         .filter((p) => !filters.occasion || arrayOf(p.giftOccasions).includes(filters.occasion))
         .filter((p) => !query || `${p.name} ${blocksToPlainText(p.description)} ${p.craftStory ?? ''}`.toLowerCase().includes(query))
-        .map((p) => toCard(p, stock.get(p.documentId), boutiques));
+        .map((p) => toCard(p, stock.get(p.slug), boutiques));
       if (filters.inStockAt) cards = cards.filter((card) => card.inStockAt.includes(filters.inStockAt as string));
       cards.sort((a, b) => b.priceJpy - a.priceJpy);
       return { total: cards.length, products: cards.slice(0, filters.limit ?? 8) };
@@ -2752,7 +2695,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       }
       if (!product) return null;
 
-      const [stock, boutiques] = await Promise.all([stockByProduct(), boutiquesById(usedLocale)]);
+      const [stock, boutiques] = await Promise.all([stockByProduct(), boutiquesBySlug(usedLocale)]);
       const dims = [product.widthCm, product.heightCm, product.depthCm];
       return {
         locale: usedLocale,
@@ -2777,22 +2720,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         })),
         occasions: arrayOf(product.giftOccasions),
         collection: product.collection ? { slug: product.collection.slug as string, name: product.collection.name as string } : null,
-        stock: (stock.get(product.documentId) ?? [])
-          .map((entry) => ({ boutique: boutiques.get(entry.boutique)?.slug, name: boutiques.get(entry.boutique)?.name, quantity: entry.quantity }))
-          .filter((entry): entry is { boutique: string; name: string; quantity: number } => typeof entry.boutique === 'string'),
+        stock: (stock.get(product.slug) ?? [])
+          .filter((entry) => boutiques.has(entry.boutique))
+          .map((entry) => ({ boutique: entry.boutique, name: boutiques.get(entry.boutique)?.name as string, quantity: entry.quantity })),
       };
     },
 
     async getBoutiques(locale: Locale, options: { productSlugs?: string[]; date?: string }) {
       const productSlugs = options.productSlugs ?? [];
       const boutiques = await findPublished(UID.boutique, locale, { sort: 'slug:asc' });
-      let productIds = new Map<string, string>();
-      let stock = new Map<string, StockEntry[]>();
-      if (productSlugs.length > 0) {
-        const products = await findPublished(UID.product, fallbackLocale(), { filters: { slug: { $in: productSlugs } }, fields: ['slug'] });
-        productIds = new Map(products.map((p) => [p.slug as string, p.documentId as string]));
-        stock = await stockByProduct();
-      }
+      const stock = productSlugs.length > 0 ? await stockByProduct() : new Map<string, StockEntry[]>();
       return boutiques.map((b) => {
         const parsed = validateOpeningHours(b.openingHours);
         const hours: OpeningHoursEntry[] = parsed.ok ? parsed.hours : [];
@@ -2807,7 +2744,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           hoursOnDate: hoursOnDate ? { opens: hoursOnDate.opens, closes: hoursOnDate.closes } : null,
           stock: productSlugs.map((slug) => ({
             product: slug,
-            quantity: (stock.get(productIds.get(slug) ?? '') ?? []).find((entry) => entry.boutique === b.documentId)?.quantity ?? 0,
+            quantity: (stock.get(slug) ?? []).find((entry) => entry.boutique === b.slug)?.quantity ?? 0,
           })),
         };
       });
@@ -3417,15 +3354,15 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return new Set(rows.map((row) => row.documentId as string));
   };
 
-  /** The appointment documents among `documentIds` that have a `sent` notification. */
-  const sentIds = async (documentIds: string[]): Promise<Set<string>> => {
-    if (documentIds.length === 0) return new Set();
+  /** The appointment references among `references` that have a `sent` notification. */
+  const sentReferences = async (references: string[]): Promise<Set<string>> => {
+    if (references.length === 0) return new Set();
     const rows = await strapi.documents(UID.notification).findMany({
-      filters: { outcome: { $eq: 'sent' }, appointment: { documentId: { $in: documentIds } } },
-      populate: { appointment: { fields: ['documentId'] } },
+      filters: { outcome: { $eq: 'sent' }, appointmentReference: { $in: references } },
+      fields: ['appointmentReference'],
       limit: 1000,
     });
-    return new Set((rows as Doc[]).map((row) => row.appointment?.documentId).filter((id): id is string => typeof id === 'string'));
+    return new Set((rows as Doc[]).map((row) => row.appointmentReference as string));
   };
 
   /** slug and name per documentId in `locale`, falling back to the default locale. Published versions only. */
@@ -3454,7 +3391,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     const ids = docs.map((doc) => doc.documentId as string);
     const [confirmed, sent, boutiques, products] = await Promise.all([
       confirmedIds(ids),
-      sentIds(ids),
+      sentReferences(docs.map((doc) => doc.reference as string)),
       labels(UID.boutique, docs.map((doc) => doc.boutique?.documentId).filter(Boolean), locale),
       labels(UID.product, docs.flatMap((doc) => (doc.products ?? []).map((product: Doc) => product.documentId)), locale),
     ]);
@@ -3466,7 +3403,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       requestedFor: toZonedIso(new Date(doc.requestedFor), timezone),
       products: (doc.products ?? []).map((product: Doc) => products.get(product.documentId) ?? { slug: product.slug, name: product.name }),
       note: doc.customerNote ?? '',
-      confirmationSent: sent.has(doc.documentId),
+      confirmationSent: sent.has(doc.reference),
     }));
   };
 
@@ -4147,22 +4084,21 @@ const clip = (text: string) => {
 };
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
-  /** Per appointment documentId: whether a `sent` notification exists, and how many `failed` ones. */
-  const outcomes = async (documentIds: string[]) => {
+  /** Per appointment reference: whether a `sent` notification exists, and how many `failed` ones. */
+  const outcomes = async (references: string[]) => {
     const map = new Map<string, { sent: boolean; failed: number }>();
-    if (documentIds.length === 0) return map;
+    if (references.length === 0) return map;
     const rows = await strapi.documents(UID.notification).findMany({
-      filters: { appointment: { documentId: { $in: documentIds } } },
-      populate: { appointment: { fields: ['documentId'] } },
+      filters: { appointmentReference: { $in: references } },
+      fields: ['appointmentReference', 'outcome'],
       limit: 5000,
     });
     for (const row of rows as Doc[]) {
-      const id = row.appointment?.documentId;
-      if (typeof id !== 'string') continue;
-      const entry = map.get(id) ?? { sent: false, failed: 0 };
+      const reference = row.appointmentReference as string;
+      const entry = map.get(reference) ?? { sent: false, failed: 0 };
       if (row.outcome === 'sent') entry.sent = true;
       else entry.failed += 1;
-      map.set(id, entry);
+      map.set(reference, entry);
     }
     return map;
   };
@@ -4189,12 +4125,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         populate: { boutique: { fields: ['name', 'address'] }, products: { fields: ['name'] } },
         limit: 200,
       })) as Doc[];
-      const state = await outcomes(published.map((doc) => doc.documentId));
+      const state = await outcomes(published.map((doc) => doc.reference as string));
 
       const pending: PendingConfirmation[] = [];
       for (const doc of published) {
         if (pending.length >= limit) break;
-        if (state.get(doc.documentId)?.sent) continue;
+        if (state.get(doc.reference)?.sent) continue;
         const subject = parseSubject(doc.customer);
         if (!subject) {
           strapi.log.warn(`[maison] Appointment ${doc.reference} has no valid LINE customer, so it can't be confirmed over LINE.`);
@@ -4212,7 +4148,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           requestedFor: toZonedIso(when, timezone),
           requestedForText,
           products,
-          previousAttempts: state.get(doc.documentId)?.failed ?? 0,
+          previousAttempts: state.get(doc.reference)?.failed ?? 0,
           appLink,
           message: buildConfirmationMessage({
             houseName: houseName.ja,
@@ -4251,14 +4187,14 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       }
       if (input.status === 'sent') {
         const existing = (await strapi.documents(UID.notification).findFirst({
-          filters: { outcome: { $eq: 'sent' }, appointment: { documentId: { $eq: appointment.documentId } } },
+          filters: { outcome: { $eq: 'sent' }, appointmentReference: { $eq: input.reference } },
           sort: 'sentAt:asc',
         })) as Doc | null;
         if (existing) return { ok: true, value: toRecorded(input.reference, existing, true) };
       }
       const created = await strapi.documents(UID.notification).create({
         data: {
-          appointment: { documentId: appointment.documentId, status: 'published' },
+          appointmentReference: input.reference,
           channel: 'line',
           outcome: input.status,
           sentAt: new Date().toISOString(),
