@@ -138,7 +138,7 @@ Each sub-project gets its own implementation plan.
 | Concierge model and provider wiring | Claude Sonnet 5 through the AI SDK, confirmed against installed docs in the plan | Plan for sub-project 3 |
 | Relations between non-localized, draft/publish and localized types in Strapi 5.55 | Verified in the first task of the Maison plan. Fallback: store slugs instead of relations. | First task of sub-project 1 |
 | Whether MCP prompts can be permission-gated | If not, the prompt holds instructions only and no data, so exposing it is harmless | Sub-project 1 |
-| Moving to a real LIFF app or MINI App later | Config change only (channel ID and LIFF ID). The app must then be served over https, with Strapi reachable from the phone. The MINI App and Official Account must share a provider, or user IDs won't match for delivery. | After the event |
+| Moving to a real LIFF app or MINI App later | Config change only: set the channel ID and LIFF ID, and remove `LINE_VERIFY_URL`. The app must then be served over https, with Strapi reachable from the phone. The MINI App and Official Account must share a provider, or user IDs won't match for delivery. | After the event |
 
 ## Out of scope
 

@@ -676,7 +676,7 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(port, () => console.log(`Mock LINE verify endpoint on http://localhost:${port}/verify (channel ${channelId})`));
+server.listen(port, "127.0.0.1", () => console.log(`Mock LINE verify endpoint on http://localhost:${port}/verify (channel ${channelId})`));
 ```
 
 - [ ] **Step 3: Write the minimal app shell**

@@ -41,9 +41,9 @@ The feature is general-purpose: any Strapi app exposing MCP tools to LINE users 
 ```
 
 - `identityProviders` is empty by default, so the feature is off unless configured.
-- The validator requires `channelId` to be a non-empty string when `line` is present.
+- The validator requires `channelId` to be a string of digits when `line` is present. That's the LINE Login channel ID, not the LIFF ID.
 - `endUserAccessTokenTtl` defaults to 3600 and must be a positive integer.
-- `identityProviders.line.verifyUrl` is optional and defaults to `https://api.line.me/oauth2/v2.1/verify`. It exists only so tests and local development can point verification at a mock server. The README marks it as test-only.
+- `identityProviders.line.verifyUrl` is optional and defaults to `https://api.line.me/oauth2/v2.1/verify`. It exists only so tests and local development can point verification at a mock server. The README marks it as test-only, and the plugin logs a warning at boot when it's set.
 
 ## Identity provider interface
 
@@ -59,7 +59,8 @@ The LINE implementation:
 - Calls `POST {verifyUrl}` as `application/x-www-form-urlencoded`, with `id_token` and `client_id=<channelId>`, and a 5-second timeout.
 - Rejects the token unless the response has `aud === channelId`, `exp` in the future, and a `sub` matching `^U[0-9a-f]{32}$`.
 - Returns `subject: "line:" + sub`.
-- Maps LINE's 4xx responses, and any failed check, to `invalid_grant` ("The LINE ID token is invalid or expired"). Maps network errors, timeouts and 5xx to `temporarily_unavailable` (HTTP 503).
+- Maps LINE's 4xx responses (except 408 and 429), and any failed check, to `invalid_grant` ("The LINE ID token is invalid or expired").
+- Maps network errors, timeouts, 408, 429 and 5xx to `temporarily_unavailable` (HTTP 503, with `Retry-After`), and logs the reason as a warning.
 
 Only LINE is built. The interface exists so another provider can be added without touching the token endpoint.
 
@@ -77,6 +78,8 @@ Rules for `line` clients, enforced by the service on create and update:
 - They're always public (`tokenEndpointAuthMethod: none`). The admin create endpoint defaults to confidential today, so `line` overrides it.
 - They must have a mapped admin token (`adminTokenId`). Updating a `line` client to unmap its token (`adminTokenId: null`) is rejected.
 - Redirect URIs are optional, because token exchange has no redirect. The admin controller's and form's "at least one redirect URI" rule applies only to `none` clients.
+- Only one `line` client can be active at a time. Every `line` client accepts ID tokens from the one configured channel, so a second active one could only widen what a customer can reach. Creating or re-activating one while another is active is refused (`invalid_request`).
+- `/authorize` refuses `line` clients (`unauthorized_client`), so the consent flow never runs for them.
 
 Existing queries that list fields explicitly gain the new ones:
 
@@ -101,13 +104,15 @@ Checks, in order:
 2. The LINE provider is configured (`unauthorized_client`, with "LINE sign-in is not configured").
 3. `subject_token` is present and `subject_token_type` is the id_token type (`invalid_request`).
 4. The provider verifies the token.
-5. The client's mapped admin token loads for its owner, using `getMappedToken(client)` for the owner and then the same owned-token loading used by mapped staff clients. The owner must be active (`invalid_grant`).
+5. The client's mapped admin token loads for its owner, using `getMappedToken(client)` for the owner and then the same owned-token loading used by mapped staff clients. The owner must be active. A failure here is a server configuration problem, not a bad ID token. It answers `temporarily_unavailable` (503) with a generic message, and logs what an admin must fix.
 
 It then creates a grant:
 
 - `subject`, `adminUserId` (the token owner), `adminTokenId`, `ownsAdminToken: false`, `adminKeyHash`, `scope: 'mcp'`, `resource`
 - `expiresAt = now + endUserAccessTokenTtl`
 - **no refresh token**: `refreshTokenHash` stays empty, and **`refreshExpiresAt = expiresAt`**. Cleanup deletes grants by `refreshExpiresAt`, and the admin page shows it as "Expires".
+
+The client can change while LINE is answering, so the service reads the client again after creating the grant. If the client was deactivated, deleted or re-mapped in the meantime, the grant is deleted and the request refused.
 
 Response:
 
@@ -140,6 +145,7 @@ resolveSubject(authorization: string | string[] | undefined): Promise<string | n
 - Returns the grant's `subject` when the header is `Bearer <plugin access token>`, the grant exists, it hasn't expired, and it has a subject.
 - Returns `null` for anything else: no header, an array value, a plain admin token, an unknown or expired token, or a staff grant.
 - **Read-only:** no `lastUsedAt` write and no revocation side effects. The middleware already did those for the same request.
+- **It identifies the customer but doesn't authenticate the request.** Call it only from MCP tool handlers, where the middleware has already validated the session. `null` means "no verified customer".
 
 The middleware itself is unchanged apart from dropping the unused `ctx.state.mcpOAuthGrantId`. It never sets or strips identity headers.
 
@@ -149,7 +155,7 @@ The middleware itself is unchanged apart from dropping the unused `ctx.state.mcp
   - a "Customer sign-in" selector (`None` or `LINE`)
   - choosing LINE hides the confidential option (the client is public), hides the redirect URIs field, and requires a mapped token
   - a hint explains that every customer session runs with that token's permissions, so it should be narrow
-- **Sessions list:** a masked Subject column. Existing revoke actions apply to customer sessions too.
+- **Sessions list:** a masked Subject column. Existing revoke actions apply to customer sessions too, except "revoke every session approved by this user". On a customer row, "approved by" is the mapped token's owner, so that button is hidden there.
 - **Connection details:** show the token endpoint and the exchange parameters when a LINE client exists.
 
 ## Security properties
@@ -158,6 +164,7 @@ The middleware itself is unchanged apart from dropping the unused `ctx.state.mcp
 - A LINE ID token issued to another channel fails verification (`aud` and `client_id` checks), so a token from another app can't be exchanged.
 - A captured ID token can be exchanged until it expires, as with any bearer token. Session tokens last at most `endUserAccessTokenTtl`.
 - There are existing kill switches: deactivate the client, delete or regenerate the mapped token, revoke sessions.
+- Each admin action updates the client before revoking its sessions, and the exchange re-checks the client after creating a session. So a sign-in that's waiting on LINE can't outlive a kill switch.
 - **No rate limit is added** in 1.1; this is listed under known limitations in the README.
 
 ## CORS
