@@ -17,8 +17,10 @@ describe('catalog service on seeded data', () => {
 
   it('lists the three collections with their product counts', async () => {
     const collections = await catalog.browseCollections('ja');
-    assert.deepEqual(collections.map((c) => c.slug).sort(), ['atelier', 'ecrins', 'voyage']);
+    assert.deepEqual(collections.map((c) => c.slug).sort(), ['atelier', 'gifts', 'voyage']);
     assert.equal(collections.reduce((sum, c) => sum + c.productCount, 0), 12);
+    assert.equal(collections.find((c) => c.slug === 'gifts').name, 'ギフト');
+    assert.equal((await catalog.browseCollections('en')).find((c) => c.slug === 'gifts').name, 'Gifts');
   });
 
   it('answers the demo question: travel gifts under ¥400,000 in stock at Ginza', async () => {
