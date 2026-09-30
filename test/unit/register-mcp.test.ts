@@ -23,7 +23,11 @@ describe('registerMcp', () => {
     const mcp = fakeMcp(true);
     registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['find_boutiques'] } }));
     const names = mcp.registerTool.mock.calls.map(([tool]) => tool.name);
-    expect(names).toEqual(['browse_collections', 'search_products', 'view_product', 'request_appointment', 'my_appointments']);
+    expect(names).toEqual([
+      'browse_collections', 'search_products', 'view_product',
+      'request_appointment', 'my_appointments', 'pending_confirmations', 'record_confirmation',
+    ]);
+    expect(mcp.registerPrompt.mock.calls.map(([prompt]) => prompt.name)).toEqual(['send_pending_confirmations']);
   });
 
   it('never claims a name Strapi generates for content types', () => {

@@ -1,5 +1,6 @@
 import type { Core } from '@strapi/strapi';
 
+import { getConfig } from './config';
 import { PLUGIN_ID } from './constants';
 
 const ACTIONS = [
@@ -14,6 +15,10 @@ const bootstrap = async ({ strapi }: { strapi: Core.Strapi }) => {
   await strapi
     .service('admin::permission')
     .actionProvider.registerMany(ACTIONS.map((action) => ({ section: 'plugins', pluginName: PLUGIN_ID, ...action })));
+
+  if (!getConfig(strapi).liffUrl) {
+    strapi.log.warn('[maison] config.liffUrl is not set, so pending_confirmations will return not_configured.');
+  }
 };
 
 export default bootstrap;

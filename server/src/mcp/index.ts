@@ -8,6 +8,9 @@ import { viewProductTool } from './tools/view-product';
 import { searchProductsTool } from './tools/search-products';
 import { myAppointmentsTool } from './tools/my-appointments';
 import { requestAppointmentTool } from './tools/request-appointment';
+import { sendPendingConfirmationsPrompt } from './prompts/send-pending-confirmations';
+import { pendingConfirmationsTool } from './tools/pending-confirmations';
+import { recordConfirmationTool } from './tools/record-confirmation';
 
 /** Must run in register(): Strapi locks the MCP capability set when the server starts. */
 export const registerMcp = (strapi: Core.Strapi) => {
@@ -25,4 +28,7 @@ export const registerMcp = (strapi: Core.Strapi) => {
   if (enabled('find_boutiques')) mcp.registerTool(findBoutiquesTool);
   if (enabled('request_appointment')) mcp.registerTool(requestAppointmentTool);
   if (enabled('my_appointments')) mcp.registerTool(myAppointmentsTool);
+  if (enabled('pending_confirmations')) mcp.registerTool(pendingConfirmationsTool);
+  if (enabled('record_confirmation')) mcp.registerTool(recordConfirmationTool);
+  mcp.registerPrompt(sendPendingConfirmationsPrompt);
 };
