@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultConfig, validateConfig } from '../../server/src/config';
+import { defaultConfig, getConfig, validateConfig } from '../../server/src/config';
+import { fakeStrapi } from './fake-strapi';
 
 describe('validateConfig', () => {
   it('accepts the defaults and a full valid config', () => {
@@ -11,6 +12,11 @@ describe('validateConfig', () => {
 
   it('accepts an http://localhost app URL for local development', () => {
     expect(() => validateConfig({ ...defaultConfig, liffUrl: 'http://localhost:3003' })).not.toThrow();
+  });
+
+  it('treats an empty liffUrl (MAISON_LIFF_URL= in .env) as not set, so Strapi still starts', () => {
+    expect(() => validateConfig({ ...defaultConfig, liffUrl: '' })).not.toThrow();
+    expect(getConfig(fakeStrapi({ config: { ...defaultConfig, liffUrl: '' } })).liffUrl).toBeNull();
   });
 
   it.each([

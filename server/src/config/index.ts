@@ -31,7 +31,8 @@ const APP_URL = /^(https:\/\/\S+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/\S*)
 export function validateConfig(config: Partial<MaisonConfig>): void {
   const merged = { ...defaultConfig, ...config };
 
-  if (merged.liffUrl !== null) {
+  // `MAISON_LIFF_URL=` in an env file gives '', which means not set: it must never stop Strapi from starting.
+  if (merged.liffUrl !== null && merged.liffUrl !== '') {
     if (typeof merged.liffUrl !== 'string' || !APP_URL.test(merged.liffUrl) || merged.liffUrl.endsWith('/')) {
       fail(
         'config.liffUrl must be an https URL (or http://localhost for local development) without a trailing slash, e.g. https://liff.line.me/<LIFF ID>'
@@ -62,10 +63,11 @@ export function validateConfig(config: Partial<MaisonConfig>): void {
   }
 }
 
-export const getConfig = (strapi: Core.Strapi): MaisonConfig => ({
-  ...defaultConfig,
-  ...(strapi.config.get(`plugin::${PLUGIN_ID}`) as Partial<MaisonConfig>),
-});
+export const getConfig = (strapi: Core.Strapi): MaisonConfig => {
+  const config = { ...defaultConfig, ...(strapi.config.get(`plugin::${PLUGIN_ID}`) as Partial<MaisonConfig>) };
+  // An empty liffUrl is the same as none.
+  return { ...config, liffUrl: config.liffUrl || null };
+};
 
 export default {
   default: defaultConfig,

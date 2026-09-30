@@ -1,7 +1,7 @@
 // Loads the demo catalog on a running Strapi and creates three admin API tokens for the MCP smoke tests.
-// Tokens are written to test/mcp/.tokens.json (gitignored) and never printed.
+// Tokens are written to test/mcp/.tokens.json (gitignored, readable by you only) and never printed.
 // Usage: node --env-file=<strapi app>/.env scripts/mcp-dev-tokens.mjs
-import { writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, writeFileSync } from 'node:fs';
 
 const STRAPI_URL = process.env.STRAPI_URL ?? 'http://localhost:1338';
 const email = process.env.ADMIN_EMAIL ?? process.env.LOCAL_TEST_ADMIN_EMAIL;
@@ -49,5 +49,8 @@ const tokens = {
   ]),
   ops: await mint('maison-ops', ['plugin::maison.confirmations.send']),
 };
-writeFileSync(new URL('../test/mcp/.tokens.json', import.meta.url), `${JSON.stringify(tokens, null, 2)}\n`);
+const tokensFile = new URL('../test/mcp/.tokens.json', import.meta.url);
+// `mode` applies only when the file is created, so tighten a file left by an earlier run before writing into it.
+if (existsSync(tokensFile)) chmodSync(tokensFile, 0o600);
+writeFileSync(tokensFile, `${JSON.stringify(tokens, null, 2)}\n`, { mode: 0o600 });
 console.log('Saved a customer, a staff and an ops token to test/mcp/.tokens.json.');
