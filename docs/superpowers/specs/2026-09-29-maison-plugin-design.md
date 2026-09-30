@@ -129,7 +129,7 @@ Registered in `bootstrap` with `admin::permission` `actionProvider.registerMany`
 | `plugin::maison.appointments.request` | MCP: request and view own appointments | Customer tools |
 | `plugin::maison.appointments.review` | MCP: review appointment requests | `appointment_requests`, on MCP and in the chat; the requests board |
 | `plugin::maison.appointments.confirm` | MCP: confirm appointment requests | `confirm_appointment`, on MCP and in the chat; the board's Confirm button |
-| `plugin::maison.confirmations.send` | MCP: send appointment confirmations | Ops tools and prompt; `pending_confirmations` in the chat |
+| `plugin::maison.confirmations.send` | MCP: send appointment confirmations | Ops tools and prompt (MCP only) |
 | `plugin::maison.demo.manage` | Load and reset demo data | Admin page (demo data) |
 
 The two staff actions use the same `subCategory: 'mcp'` as the other tool actions. They also gate the chat and the admin page, so one grant on a staff role covers every surface.
@@ -162,8 +162,8 @@ In the talk, staff ask the chat about new requests and confirm one. The ops agen
   - **Contract.** `getTools()` returns `[{ name, description, schema, action, execute }]` and `getMeta()` returns `{ label, description }`. The chat looks for the service on every installed plugin, offers the tools as `maison__<name>`, and shows each one only to admins whose role holds its `action`.
   - **One adapter.** Every chat tool is an MCP tool definition passed through one adapter, so the two surfaces can't drift. It keeps the same name, description, input schema and permission. `execute(args)` validates `args` with the schema, runs `createHandler(strapi, context)({ args, extra: {} })`, and returns `structuredContent`. An `isError` result becomes `{ error: { code, message, hint } }`.
   - **No handler context.** The chat gives `execute` no admin user or ability. No Maison handler reads the MCP handler context, so the adapter passes a placeholder.
-  - **Offered:** `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `appointment_requests`, `confirm_appointment`, and `pending_confirmations`, which is read-only.
-  - **Not offered:** `request_appointment` and `my_appointments` need a signed-in LINE customer, and a chat has an admin instead. `record_confirmation` only follows a LINE push, which the ops agent makes.
+  - **Offered:** `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `appointment_requests`, and `confirm_appointment`.
+  - **Not offered:** `request_appointment` and `my_appointments` need a signed-in LINE customer, and a chat has an admin instead. `record_confirmation` only follows a LINE push, which the ops agent makes. `pending_confirmations` stays on MCP only, because its result carries each customer's full LINE user id.
   - **Disabled tools.** Tools listed in `disabledTools` are left out of the chat as well as MCP.
   - **Zod.** The chat's `@tanstack/ai` 0.52 converts a schema through its Standard JSON Schema (`~standard.jsonSchema`), which zod 4 provides. Maison's schemas come from `@strapi/utils`, which is zod 4.4.3 in Strapi 5.55.1. The chat plugin builds its own tools with the same `z`.
 - **Admin routes and page.** See "Admin page".

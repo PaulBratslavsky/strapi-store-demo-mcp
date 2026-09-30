@@ -5273,7 +5273,7 @@ git commit -m "feat: add staff review and confirmation of appointment requests"
 - Produces:
   - service `ai-tools` with `getTools(): ChatTool[]` and `getMeta(): { label: 'Maison'; description: string }`
   - `interface ChatTool { name; description; schema: z.ZodObject; action: string; execute(args: unknown): Promise<unknown> }`. `execute` resolves to the tool's `structuredContent`, or to `{ error: { code, message, hint } }`.
-  - `CHAT_TOOLS`, the seven MCP definitions the chat offers
+  - `CHAT_TOOLS`, the six MCP definitions the chat offers
   - `describeIssues(error: z.ZodError): string` in `server/src/mcp/schemas.ts`
 
 **The contract, as 1.6.0 implements it.** This comes from its `docs/extending.md` and was confirmed in `dist/server`:
@@ -5287,8 +5287,8 @@ git commit -m "feat: add staff review and confirmation of appointment requests"
 **The handler context.** Strapi calls `createHandler(strapi, context)` with the token's ability and user. No Maison handler reads it: every `createHandler` takes only `strapi`, and no schema resolver uses its argument. The chat has no context to give, so the adapter passes a placeholder, and a unit test fails if a chat tool's handler starts declaring the parameter.
 
 **What the chat gets:**
-- **Offered:** `browse_collections`, `search_products`, `view_product` and `find_boutiques` (`catalog.read`); `appointment_requests` (`appointments.review`); `confirm_appointment` (`appointments.confirm`); and `pending_confirmations` (`confirmations.send`), which is read-only.
-- **Not offered:** `request_appointment` and `my_appointments` act for a signed-in LINE customer, and an admin chat has an admin instead, so they would only answer `not_signed_in`. `record_confirmation` records the outcome of a LINE push, which only the ops agent makes.
+- **Offered:** `browse_collections`, `search_products`, `view_product` and `find_boutiques` (`catalog.read`); `appointment_requests` (`appointments.review`); and `confirm_appointment` (`appointments.confirm`).
+- **Not offered:** `request_appointment` and `my_appointments` act for a signed-in LINE customer, and an admin chat has an admin instead, so they would only answer `not_signed_in`. `record_confirmation` records the outcome of a LINE push, which only the ops agent makes. `pending_confirmations` stays on MCP for the ops agent only: its result carries each customer's full LINE user id, which the chat has no use for. Staff see "LINE sent" per appointment, masked, through `appointment_requests`.
 - **Errors.** An expected failure comes back as a value, `{ error: { code, message, hint } }`, so the model reads the hint and recovers. That matches what MCP clients see. Arguments that fail the schema return `invalid_input`, and the handler never runs.
 - **Disabled tools.** `disabledTools` applies here too, so a tool disabled for MCP is also missing from the chat.
 
@@ -5312,7 +5312,6 @@ describe('ai-tools for the in-admin chat', () => {
       ['find_boutiques', 'plugin::maison.catalog.read'],
       ['appointment_requests', 'plugin::maison.appointments.review'],
       ['confirm_appointment', 'plugin::maison.appointments.confirm'],
-      ['pending_confirmations', 'plugin::maison.confirmations.send'],
     ]);
   });
 
@@ -5398,7 +5397,6 @@ import { appointmentRequestsTool } from '../mcp/tools/appointment-requests';
 import { browseCollectionsTool } from '../mcp/tools/browse-collections';
 import { confirmAppointmentTool } from '../mcp/tools/confirm-appointment';
 import { findBoutiquesTool } from '../mcp/tools/find-boutiques';
-import { pendingConfirmationsTool } from '../mcp/tools/pending-confirmations';
 import { searchProductsTool } from '../mcp/tools/search-products';
 import { viewProductTool } from '../mcp/tools/view-product';
 
@@ -5444,7 +5442,6 @@ export const CHAT_TOOLS: McpTool[] = [
   findBoutiquesTool,
   appointmentRequestsTool,
   confirmAppointmentTool,
-  pendingConfirmationsTool,
 ];
 
 /**
@@ -6481,12 +6478,11 @@ The **`send_pending_confirmations` prompt** tells an ops agent how to deliver co
 
 ## The admin chat
 
-strapi-plugin-tanstack-ai 1.6 finds Maison's `ai-tools` service and offers seven of its tools as `maison__<name>`:
+strapi-plugin-tanstack-ai 1.6 finds Maison's `ai-tools` service and offers six of its tools as `maison__<name>`:
 - the four catalog tools
 - `appointment_requests` and `confirm_appointment`
-- the read-only `pending_confirmations`
 
-Each tool is offered only to admins whose role holds its permission. The customer tools are left out, because a chat has an admin rather than a LINE customer. `record_confirmation` is left out because it only follows a LINE push.
+Each tool is offered only to admins whose role holds its permission. The customer tools are left out, because a chat has an admin rather than a LINE customer. `record_confirmation` is left out because it only follows a LINE push, and `pending_confirmations` because its result carries customers' full LINE user ids.
 
 ## The admin page
 
