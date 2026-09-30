@@ -13,19 +13,28 @@ describe('confirmations service', () => {
   let confirmed;
   let waiting;
 
+  /** A customer's request, as of `now`. Returns its reference. */
+  const make = async (requestedFor, now = NOW) => {
+    const result = await strapi.plugin('maison').service('appointments').request({
+      subject: SUBJECT_A, boutique: 'ginza', productSlugs: ['weekender-50', 'passport-cover'], requestedFor, createdVia: 'concierge', now,
+    });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    return result.value.reference;
+  };
+  /** Staff confirm it: publishing an appointment confirms it. */
+  const publish = async (reference) => {
+    const doc = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference } });
+    await strapi.documents(APPOINTMENT).publish({ documentId: doc.documentId });
+    return reference;
+  };
+  const pendingReferences = async (limit, now) => (await confirmations.listPending(limit, now)).value.map((a) => a.reference);
+
   before(async () => {
     process.env.MAISON_LIFF_URL = LIFF_URL;
     strapi = await bootStrapi('confirmations');
     await strapi.plugin('maison').service('seed').loadDemoCatalog();
-    const appointments = strapi.plugin('maison').service('appointments');
-    const make = async (requestedFor) =>
-      (await appointments.request({
-        subject: SUBJECT_A, boutique: 'ginza', productSlugs: ['weekender-50', 'passport-cover'], requestedFor, createdVia: 'concierge', now: NOW,
-      })).value.reference;
-    confirmed = await make('2026-10-10T14:00:00+09:00');
+    confirmed = await publish(await make('2026-10-10T14:00:00+09:00'));
     waiting = await make('2026-10-11T14:00:00+09:00');
-    const doc = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: confirmed } });
-    await strapi.documents(APPOINTMENT).publish({ documentId: doc.documentId });
     confirmations = strapi.plugin('maison').service('confirmations');
   });
 
@@ -35,7 +44,7 @@ describe('confirmations service', () => {
   });
 
   it('lists only published appointments, with a ready LINE message', async () => {
-    const result = await confirmations.listPending(10);
+    const result = await confirmations.listPending(10, NOW);
     assert.equal(result.ok, true);
     assert.deepEqual(result.value.map((a) => a.reference), [confirmed]);
     const [item] = result.value;
@@ -58,7 +67,7 @@ describe('confirmations service', () => {
     const failed = await confirmations.record({ reference: confirmed, status: 'failed', detail: 'not reachable: not a friend or blocked' });
     assert.equal(failed.ok, true);
     assert.equal(failed.value.alreadyRecorded, false);
-    assert.equal((await confirmations.listPending(10)).value[0].previousAttempts, 1);
+    assert.equal((await confirmations.listPending(10, NOW)).value[0].previousAttempts, 1);
 
     const sent = await confirmations.record({ reference: confirmed, status: 'sent', detail: `{"sentMessages":[{"id":"1"}]}${'!'.repeat(900)}` });
     assert.equal(sent.value.alreadyRecorded, false);
@@ -69,16 +78,32 @@ describe('confirmations service', () => {
     assert.equal(again.value.alreadyRecorded, true);
     assert.equal(again.value.notification.sentAt, sent.value.notification.sentAt);
 
-    assert.deepEqual((await confirmations.listPending(10)).value, []);
+    assert.deepEqual((await confirmations.listPending(10, NOW)).value, []);
     const [mine] = (await strapi.plugin('maison').service('appointments').listForCustomer(SUBJECT_A, 'ja')).filter((a) => a.reference === confirmed);
     assert.equal(mine.status, 'confirmed');
     assert.equal(mine.confirmationSent, true);
   });
 
+  it('never lists a confirmed visit whose time has passed', async () => {
+    const earlier = new Date('2026-09-20T00:00:00Z');
+    const past = await publish(await make('2026-09-26T14:00:00+09:00', earlier));
+    assert.ok(!(await pendingReferences(10, NOW)).includes(past), 'no confirmation for a visit that is over');
+    assert.ok((await pendingReferences(10, earlier)).includes(past), 'it was listed while the visit was ahead');
+  });
+
+  it('lists an unsent visit even when more sent ones come before it than the limit', async () => {
+    const sent = [await publish(await make('2026-10-12T14:00:00+09:00')), await publish(await make('2026-10-13T14:00:00+09:00'))];
+    const unsent = await publish(await make('2026-10-14T14:00:00+09:00'));
+    for (const reference of sent) {
+      assert.equal((await confirmations.record({ reference, status: 'sent', detail: 'ok' })).ok, true);
+    }
+    assert.deepEqual(await pendingReferences(1, NOW), [unsent]);
+  });
+
   it('returns not_configured without a liffUrl', async () => {
     strapi.config.set('plugin::maison.liffUrl', null);
     try {
-      assert.equal((await confirmations.listPending(10)).code, 'not_configured');
+      assert.equal((await confirmations.listPending(10, NOW)).code, 'not_configured');
     } finally {
       strapi.config.set('plugin::maison.liffUrl', LIFF_URL);
     }

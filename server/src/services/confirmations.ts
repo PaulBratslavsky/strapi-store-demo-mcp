@@ -59,14 +59,23 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return map;
   };
 
+  /** References of every appointment with a `sent` notification. Not capped: a cap would let sent ones be listed again. */
+  const sentReferences = async (): Promise<string[]> => {
+    const rows = await strapi.documents(UID.notification).findMany({
+      filters: { outcome: { $eq: 'sent' } },
+      fields: ['appointmentReference'],
+    });
+    return [...new Set((rows as Doc[]).map((row) => row.appointmentReference as string))];
+  };
+
   const toRecorded = (reference: string, row: Doc, alreadyRecorded: boolean): RecordedConfirmation => ({
     notification: { reference, status: row.outcome, sentAt: new Date(row.sentAt).toISOString(), detail: row.detail ?? '' },
     alreadyRecorded,
   });
 
   return {
-    /** Published (staff-confirmed) appointments without a `sent` notification, soonest visit first. */
-    async listPending(limit: number): Promise<ServiceResult<PendingConfirmation[]>> {
+    /** Upcoming published (staff-confirmed) appointments without a `sent` notification, soonest visit first. */
+    async listPending(limit: number, now: Date = new Date()): Promise<ServiceResult<PendingConfirmation[]>> {
       const { liffUrl, timezone, houseName } = getConfig(strapi);
       if (!liffUrl) {
         return failure(
@@ -75,18 +84,23 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           'Set liffUrl in the maison plugin config (MAISON_LIFF_URL in LaunchPad) and restart Strapi. Send nothing until then.'
         );
       }
+      // The query itself leaves out visits that are over and ones already sent, so `limit` counts only what's left to send.
+      const sent = await sentReferences();
       const published = (await strapi.documents(UID.appointment).findMany({
         status: 'published',
+        filters: {
+          requestedFor: { $gte: now.toISOString() },
+          ...(sent.length > 0 ? { reference: { $notIn: sent } } : {}),
+        },
         sort: 'requestedFor:asc',
         populate: { boutique: { fields: ['name', 'address'] }, products: { fields: ['name'] } },
-        limit: 200,
+        limit,
       })) as Doc[];
       const state = await outcomes(published.map((doc) => doc.reference as string));
 
       const pending: PendingConfirmation[] = [];
       for (const doc of published) {
-        if (pending.length >= limit) break;
-        if (state.get(doc.reference)?.sent) continue;
+        if (state.get(doc.reference)?.sent) continue; // recorded as sent since the query above
         const subject = parseSubject(doc.customer);
         if (!subject) {
           strapi.log.warn(`[maison] Appointment ${doc.reference} has no valid LINE customer, so it can't be confirmed over LINE.`);
