@@ -64,3 +64,7 @@ export const staffAppointmentOutput = z.object({
   confirmationSent: z.boolean().describe('Whether the LINE confirmation has been delivered.'),
   createdAt: z.string().describe('When the request was made, ISO 8601 with offset.'),
 });
+
+/** Zod issues on one line, e.g. `reference: Use a reference like APT-4821.` */
+export const describeIssues = (error: z.ZodError): string =>
+  error.issues.map((issue) => `${issue.path.map(String).join('.') || 'input'}: ${issue.message}`).join('; ');
