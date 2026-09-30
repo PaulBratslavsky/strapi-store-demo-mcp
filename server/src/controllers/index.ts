@@ -1,5 +1,4 @@
-import { analytics } from './analytics';
+import appointments from './appointments';
+import demo from './demo';
 
-export const controllers = {
-  analytics,
-};
+export default { appointments, demo };

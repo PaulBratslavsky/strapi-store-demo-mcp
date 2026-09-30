@@ -1,7 +1,11 @@
 import type { Core } from '@strapi/strapi';
 
-import { registerAllMcpTools } from './mcp';
+import { registerDocumentMiddleware } from './document-middleware';
+import { registerMcp } from './mcp';
 
-export const register = ({ strapi }: { strapi: Core.Strapi }) => {
-  registerAllMcpTools(strapi);
+const register = ({ strapi }: { strapi: Core.Strapi }) => {
+  registerDocumentMiddleware(strapi);
+  registerMcp(strapi);
 };
+
+export default register;
