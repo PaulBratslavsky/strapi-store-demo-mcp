@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { SUBJECT_A, bootStrapi, ensureLocales } from './harness.mjs';
+import { SUBJECT_A, bootStrapi, ensureLocales, requireFromApp } from './harness.mjs';
 
 const UID = {
   collection: 'plugin::maison.collection',
@@ -110,24 +110,32 @@ describe('relations across locales and draft/publish (Strapi 5.55)', () => {
     assert.deepEqual((await inCollection()).map((p) => p.slug), ['probe'], 'the product stays in its collection');
   });
 
-  it('applies the validation middleware', async () => {
+  it("applies the validation middleware, rejecting with the app's own ValidationError", async () => {
+    // Core's error middleware answers 400 only for errors from the app's @strapi/utils. A plugin that bundles its own
+    // copy throws a look-alike class, and the Content Manager shows staff "Internal Server Error" instead of the reason.
+    const { errors } = requireFromApp('@strapi/utils');
+    const appValidationError = (message) => (error) => {
+      assert.ok(error instanceof errors.ValidationError, `${error?.name} is not the app's @strapi/utils ValidationError`);
+      assert.match(error.message, message);
+      return true;
+    };
     await assert.rejects(
       strapi.documents(UID.stock).create({ data: { productSlug: 'probe', boutiqueSlug: 'ginza', quantity: 1 } }),
-      /already exists/
+      appValidationError(/already exists/)
     );
     await assert.rejects(
       strapi.documents(UID.product).create({
         locale: 'ja',
         data: { name: 'x', slug: 'bad-occasion', sku: 'X-1', category: 'bag', priceJpy: 1, giftOccasions: ['graduation'] },
       }),
-      /graduation/
+      appValidationError(/graduation/)
     );
     await assert.rejects(
       strapi.documents(UID.boutique).create({
         locale: 'ja',
         data: { name: 'x', slug: 'bad-hours', openingHours: [{ weekday: 'mon', opens: '20:00', closes: '11:00' }] },
       }),
-      /open before/
+      appValidationError(/open before/)
     );
   });
 });

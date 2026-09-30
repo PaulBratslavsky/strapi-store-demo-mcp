@@ -89,4 +89,29 @@ describe('appointments service', () => {
     assert.ok(theirs.length > 0);
     assert.ok(theirs.every((a) => !mine.some((m) => m.reference === a.reference)), 'no overlap between customers');
   });
+
+  it("keeps the customer's LINE user ID out of the Content Manager", async () => {
+    const contentTypes = strapi.plugin('content-manager').service('content-types');
+    const model = contentTypes.findContentType(UID);
+    assert.ok(model.attributes.reference, 'the Content Manager model has the other fields');
+    assert.equal(model.attributes.customer, undefined, 'the Content Manager model has no customer field');
+
+    const { layouts } = await contentTypes.findConfiguration(model);
+    assert.ok(!layouts.list.includes('customer'), `no customer column in the list view: ${layouts.list}`);
+    assert.ok(!layouts.edit.flat().some((field) => field.name === 'customer'), 'no customer field in the edit view');
+  });
+
+  it('keeps the customer through a Content Manager save and Publish, which never send it', async () => {
+    const requested = await request({ requestedFor: '2026-10-17T14:00:00+09:00' });
+    assert.equal(requested.ok, true, JSON.stringify(requested));
+    const { documentId } = await strapi.documents(UID).findFirst({ status: 'draft', filters: { reference: requested.value.reference } });
+    // What the Content Manager does on Save, then Publish: update the draft with the fields it shows, then publish it.
+    await strapi.documents(UID).update({ documentId, data: { customerNote: 'Edited by staff in the admin' } });
+    await strapi.documents(UID).publish({ documentId });
+    for (const status of ['draft', 'published']) {
+      const stored = await strapi.documents(UID).findOne({ documentId, status });
+      assert.equal(stored.customer, SUBJECT_A, `the ${status} version keeps the customer`);
+      assert.equal(stored.customerNote, 'Edited by staff in the admin');
+    }
+  });
 });
