@@ -7,7 +7,7 @@ const chatTools = (services: Record<string, unknown> = {}, config: Record<string
 const toolNamed = (tools: any[], name: string) => tools.find((tool) => tool.name === name);
 
 describe('ai-tools for the in-admin chat', () => {
-  it('offers the catalog, staff and pending-confirmation tools, each gated by its MCP permission', () => {
+  it('offers the catalog and staff tools, each gated by its MCP permission', () => {
     expect(chatTools().map((tool) => [tool.name, tool.action])).toEqual([
       ['browse_collections', 'plugin::maison.catalog.read'],
       ['search_products', 'plugin::maison.catalog.read'],
@@ -15,13 +15,15 @@ describe('ai-tools for the in-admin chat', () => {
       ['find_boutiques', 'plugin::maison.catalog.read'],
       ['appointment_requests', 'plugin::maison.appointments.review'],
       ['confirm_appointment', 'plugin::maison.appointments.confirm'],
-      ['pending_confirmations', 'plugin::maison.confirmations.send'],
     ]);
   });
 
-  it('never offers the customer tools or record_confirmation', () => {
+  it('never offers the customer tools or the LINE confirmation tools', () => {
     const names = chatTools().map((tool) => tool.name);
-    for (const name of ['request_appointment', 'my_appointments', 'record_confirmation']) expect(names).not.toContain(name);
+    // pending_confirmations returns every customer's full LINE user ID, and the chat has no LINE tool to use it with.
+    for (const name of ['request_appointment', 'my_appointments', 'pending_confirmations', 'record_confirmation']) {
+      expect(names).not.toContain(name);
+    }
   });
 
   it('uses the MCP descriptions, with schemas @tanstack/ai can turn into JSON Schema', () => {
@@ -63,8 +65,14 @@ describe('ai-tools for the in-admin chat', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it('wraps only handlers that ignore the MCP handler context, which the chat does not have', () => {
-    for (const tool of CHAT_TOOLS) expect(tool.createHandler.length, tool.name).toBe(1);
+  it('adapts only tools that need no MCP handler context and gate on a single permission', () => {
+    for (const tool of CHAT_TOOLS) {
+      // The chat has no handler context to give, so neither the handler nor the schema resolver may declare the parameter.
+      expect(tool.createHandler.length, tool.name).toBe(1);
+      expect(tool.resolveInputSchema?.length ?? 0, tool.name).toBe(0);
+      // MCP ORs a tool's policies, but the adapter gates the chat on the first one only.
+      expect(tool.auth.policies, tool.name).toHaveLength(1);
+    }
   });
 
   it("names Maison in the chat's Tools menu", () => {

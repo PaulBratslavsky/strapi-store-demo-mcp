@@ -7,7 +7,19 @@ describe('ai-tools for the in-admin chat', () => {
   let strapi;
   let tools;
   let reference;
-  const tool = (name) => tools.find((candidate) => candidate.name === name);
+  /** Everything a chat tool returned in this file, as JSON, for the last test to scan. */
+  const outputs = [];
+  const tool = (name) => {
+    const chatTool = tools.find((candidate) => candidate.name === name);
+    return {
+      ...chatTool,
+      async execute(...args) {
+        const result = await chatTool.execute(...args);
+        outputs.push(JSON.stringify(result));
+        return result;
+      },
+    };
+  };
 
   before(async () => {
     strapi = await bootStrapi('ai-tools');
@@ -37,6 +49,14 @@ describe('ai-tools for the in-admin chat', () => {
     assert.equal(result.products[0].name, 'Weekender 50');
   });
 
+  it('lists requests for staff through appointment_requests, with the customer masked', async () => {
+    // status "all", so the result doesn't depend on whether the next test has confirmed the request yet.
+    const { appointments } = await tool('appointment_requests').execute({ status: 'all' }, strapi);
+    const mine = appointments.find((appointment) => appointment.reference === reference);
+    assert.ok(mine, `${reference} is listed`);
+    assert.equal(mine.customer, 'line:Uaaa…aa');
+  });
+
   it('confirms a request through confirm_appointment, once', async () => {
     const first = await tool('confirm_appointment').execute({ reference }, strapi);
     assert.equal(first.alreadyConfirmed, false);
@@ -53,5 +73,11 @@ describe('ai-tools for the in-admin chat', () => {
     const result = await tool('confirm_appointment').execute({ reference: 'APT-0000' }, strapi);
     assert.equal(result.error.code, 'not_found');
     assert.match(result.error.hint, /appointment_requests/);
+  });
+
+  // Last: it scans what the tests above got back from the chat tools.
+  it('never puts a full LINE user ID in anything a chat tool returned', () => {
+    assert.ok(outputs.some((output) => output.includes('line:Uaaa…aa')), 'the scan saw output that names a customer');
+    for (const output of outputs) assert.doesNotMatch(output, /U[0-9a-f]{32}/);
   });
 });
