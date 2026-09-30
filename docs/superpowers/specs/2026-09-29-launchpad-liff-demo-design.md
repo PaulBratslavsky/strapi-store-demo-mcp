@@ -1,12 +1,12 @@
-# LaunchPad integration, Maison app and demo: design
+# The maison-demo repo, the Maison app and the demo: design
 
-- **Date:** 2026-09-29, revised the same day; amended 2026-09-30
+- **Date:** 2026-09-29, revised the same day; amended 2026-09-30, and moved to its own repo the same day
 - **Status:** Draft for review
 - **Overview:** [AX luxury demo overview](2026-09-29-ax-luxury-demo-overview.md)
-- **Target repo:** [PaulBratslavsky/LaunchPad](https://github.com/PaulBratslavsky/LaunchPad) (the fork): Strapi configuration plus a new `liff/` frontend
+- **Target repo:** `maison-demo`, a new standalone repo at `/Users/paul/work/maison-demo`, with a Strapi app (`strapi/`) and the Maison app (`liff/`). It becomes public on GitHub as PaulBratslavsky/maison-demo when Paul says so. (This file keeps its old name, from when LaunchPad hosted the demo.)
 - **Depends on:**
-  - [Maison plugin](2026-09-29-maison-plugin-design.md) (PR #2) and [oauth-mcp-manager 1.1](2026-09-29-oauth-mcp-manager-line-design.md) (PR #4), both built and reviewed
-  - strapi-plugin-tanstack-ai 1.6.0, the in-admin chat
+  - [Maison plugin](2026-09-29-maison-plugin-design.md) (PR #2), carried in the repo as a local plugin
+  - [oauth-mcp-manager 1.1](2026-09-29-oauth-mcp-manager-line-design.md) (PR #4), from npm once 1.1.0 is published
 
 > **Revision (29 September):** The presenter can't get a LINE MINI App channel in time, and QBurst presents the MINI App side of the event right after this talk. So the demo runs on the stage laptop, in a browser at phone size:
 > - **LINE sign-in** is simulated with LINE's official LIFF mock and a local stand-in for LINE's ID-token verify endpoint.
@@ -16,76 +16,107 @@
 > Hosting is no longer needed. Part F covers the handoff slides.
 
 > **Amendment (30 September):** the plugins are built, and they changed what this demo does:
-> - **Staff work through agents too.** Maison added two staff tools, a requests board in the admin, and six tools for an in-admin chat. Staff confirm a request on the board or by asking the chat, where they used to publish it in the Content Manager (Part D).
-> - **The in-admin chat** is strapi-plugin-tanstack-ai 1.6.0, installed in LaunchPad (Part A).
-> - **A local model stands in when there's no API key.** Both the chat and the concierge use `qwen3-14b-32k` on Ollama (Parts A and B).
-> - **The demo runs on its own database,** and the setup script registers its first admin (Part A).
+> - **Staff confirm on the Maison board.** Maison added two staff tools and a requests board in the admin. Staff confirm a request on the board, where they used to publish it in the Content Manager (Part D).
+> - **A local model stands in when there's no API key.** The concierge uses `qwen3-14b-32k` on Ollama (Part B).
 > - **The app follows the plugins' errors:** `temporarily_unavailable` versus `invalid_grant` at sign-in, real calendar dates, and `not_found` hints (Part B).
 > - **Customers' LINE user IDs stay out of admin API responses** (Part A).
-> - **The runbook** moves to `liff/README.md`, because LaunchPad ignores `docs/`. It gains a backup video (Part E).
+> - **The runbook gains a backup video** (Part E).
 
-## Part A: LaunchPad Strapi
+> **Move (30 September):** the demo leaves LaunchPad for `maison-demo`, a standalone repo that Paul can share and QBurst can run:
+> - **A fresh Strapi 5.55.1 app.** Maison is a local plugin in it, and oauth-mcp-manager comes from npm (Part A).
+> - **No switch and no second database.** The plugins always load, and the app's own database is the demo's.
+> - **npm everywhere.** `git clone`, `npm install`, `npm run dev` and `npm run setup` run it (Part A).
+> - **No in-admin chat.** Paul dropped strapi-plugin-tanstack-ai: the demo's story is customers' agents working with the store's data over Strapi MCP, with LINE as the identity and messaging channel. Staff confirm on the Maison board (Part D).
+> - **The runbook is the repo's README** (Part E).
+
+## Part A: The repo and its Strapi
+
+### The repo
+
+- **Layout:** `strapi/`, the Strapi app, and `liff/`, the Maison app. Each has its own `package.json` and lockfile, under a root `package.json`.
+- **npm everywhere,** with no workspaces:
+  - Maison installs its own dependencies, as a local plugin does.
+  - Strapi's admin runs on React 18 and the app on React 19, so the two stay apart.
+- **Running it:**
+  1. `npm install` at the root installs both apps. Strapi's `postinstall` installs and builds Maison.
+  2. The same install creates `strapi/.env` and `liff/.env` from their `.env.example` files (`scripts/init-env.mjs`). It generates Strapi's secrets and the demo admin's password, leaves both files mode 600, and prints no value.
+  3. `npm run dev` starts Strapi on 1338, the app on 3003, and the LINE verify mock on 127.0.0.1:4545.
+  4. `npm run setup` loads the demo into the running Strapi. The app then restarts, to read its OAuth client.
+  - The ports are the demo's own, so it runs next to a stock Strapi on 1337.
+  - `npm test` runs the app's and Maison's unit tests.
+- **Public:** pushed to GitHub as PaulBratslavsky/maison-demo only when Paul says so.
+
+### Strapi
+
+- **A fresh `create-strapi` 5.55.1 app:** TypeScript, npm, SQLite, and no example data.
+- **One Strapi version.** npm `overrides` hold eight `@strapi` packages at 5.55.1.
+  - Without them, npm resolves Strapi's own `^5.0.0` peer ranges to the newest release, 5.56.0.
+  - Strapi core then keeps its own nested copy of `@strapi/utils`. Its error middleware answers 400, 403 or 404 only for errors made with that copy (an `instanceof` check), so a plugin's errors would reach clients as 500s.
 
 ### Plugins
 
-- **The two Maison plugins:** `strapi-store-demo-mcp` (Maison) and `strapi-oauth-mcp-manager` 1.1, linked with yalc from their feature branches, and installed from npm once published.
-- **The chat:** `strapi-plugin-tanstack-ai` ^1.6.0, from npm.
-- **All three load only when `MAISON_DEMO=true`.** Their dependency entries stay local and uncommitted: yalc links can't be committed, and LaunchPad's postinstall rewrites the project's uuid in the same file. They become committed dependencies once the Maison plugins are on npm.
+- **Maison** (`strapi-store-demo-mcp`, plugin id `maison`) is a local plugin in `strapi/src/plugins/maison`, registered with `resolve: 'src/plugins/maison'`.
+  - It's a copy of the plugin repo's files at one commit, which the README names. The plugin repo stays the source of truth: changes go there first, and the demo copies them again.
+  - It has its own `package.json` and dependencies, and builds with `npm run build` (`npm run watch` while working on it).
+  - The app's `postinstall` runs `cd src/plugins/maison && npm install && npm run build`. Then it removes the plugin's own copy of `@strapi/utils`, so Maison's errors are the ones Strapi recognises: a Content Manager save that Maison rejects answers 400 with its reason, not 500.
+  - **What comes over:** `admin/`, `server/` (with the seed), `test/`, `scripts/`, `package.json`, `package-lock.json`, the README and its config files. `docs/`, `node_modules` and `dist` stay behind.
+  - Its unit, integration and MCP smoke tests run inside the demo. The integration harness points at the demo's Strapi (`STRAPI_APP_DIR`) and uses database files of its own.
+  - Its `ai-tools` service, written for strapi-plugin-tanstack-ai's chat, comes along with the code and stays inert.
+- **strapi-oauth-mcp-manager** ^1.1.0, from npm: a separate, reusable package.
+- **Both always load.** There's no switch.
 
 ### Configuration
 
 | File | Change |
 |---|---|
-| `config/server.ts` | Keep `mcp: { enabled: env.bool('MCP_ENABLED', true) }`. Add `url`: `PUBLIC_URL`, or `http://localhost:<port>` without it, so Maison's media URLs are absolute for the app's origin. |
-| `config/admin.ts` | `secrets: { encryptionKey: env('ENCRYPTION_KEY') }`. oauth-mcp-manager needs it to decrypt admin tokens. |
-| `config/plugins.ts` | `maison`, `strapi-oauth-mcp-manager` and `tanstack-ai`, each enabled by `MAISON_DEMO`. The values are in the table below. |
-| `config/middlewares.ts` | With `MAISON_DEMO`, the CORS object below. Without it, Strapi's default `'strapi::cors'`, as before. |
-| `src/extensions/maison/strapi-server.ts` | Marks the appointment's `customer` hidden in the schema's config ("Customers' LINE user IDs" below). |
-| `.env.example` | `MAISON_DEMO`, `ENCRYPTION_KEY`, `LINE_LOGIN_CHANNEL_ID`, `LINE_VERIFY_URL`, `MAISON_LIFF_URL`, `MAISON_APP_ORIGIN`, `PUBLIC_URL`, `ANTHROPIC_API_KEY`, `OLLAMA_MODEL`, `OLLAMA_HOST` |
+| `config/server.ts` | Port 1338 by default. `url`: `PUBLIC_URL`, or `http://localhost:<port>` without it, so Maison's media URLs are absolute for the app's origin. `mcp: { enabled: env.bool('MCP_ENABLED', true) }`. |
+| `config/admin.ts` | Unchanged. The 5.55.1 template already sets `secrets.encryptionKey` from `ENCRYPTION_KEY`, which oauth-mcp-manager needs to decrypt admin tokens. |
+| `config/plugins.ts` | `maison` (local) and `strapi-oauth-mcp-manager`. The template's entries stay. The values are in the table below. |
+| `config/middlewares.ts` | The CORS object below. |
+| `src/extensions/maison/strapi-server.ts` | Marks the appointment's `customer` hidden in the schema's config, and not searchable ("Customers' LINE user IDs" below). |
+| `.env.example` | The template's keys, with `PORT=1338`, and `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD`, `LINE_LOGIN_CHANNEL_ID`, `LINE_VERIFY_URL`, `MAISON_LIFF_URL`, `MAISON_APP_ORIGIN`, `PUBLIC_URL` |
 
 `config/plugins.ts`, plugin by plugin (an empty value in `.env` counts as unset):
 
 | Plugin | Configuration |
 |---|---|
-| `maison` | `liffUrl` from `MAISON_LIFF_URL`. |
+| `maison` | `resolve: 'src/plugins/maison'`, and `liffUrl` from `MAISON_LIFF_URL`. |
 | `strapi-oauth-mcp-manager` | `identityProviders.line = { channelId, verifyUrl }` when `LINE_LOGIN_CHANNEL_ID` is set, and `{}` otherwise. `channelId` is digits only; `verifyUrl` comes from `LINE_VERIFY_URL`, only when it's set. |
-| `tanstack-ai` | The chat. With `ANTHROPIC_API_KEY`: `{ provider: 'anthropic', model: 'claude-sonnet-5', apiKey }`. Otherwise: `{ provider: 'ollama', model: OLLAMA_MODEL, baseURL: OLLAMA_HOST }`, which default to `qwen3-14b-32k` and `http://localhost:11434`. |
 
-The CORS object, with `MAISON_DEMO` only:
-- **`origin`:** LaunchPad's frontends, `http://localhost:3003` (the Maison app), `CLIENT_URL`, and `MAISON_APP_ORIGIN` when set
+The CORS object:
+- **`origin`:** `http://localhost:3003` (the Maison app), and `MAISON_APP_ORIGIN` when set
 - **`methods`:** Strapi's defaults, which include what MCP needs (`GET, POST, DELETE, OPTIONS`)
 - **`headers`:** `Content-Type`, `Authorization`, `Origin`, `Accept`, `mcp-session-id`, `mcp-protocol-version`, `Last-Event-ID`
 - **`expose`:** `WWW-Authenticate`, `mcp-session-id`, `mcp-protocol-version`, and `Retry-After`, which the app reads when sign-in is temporarily unavailable
 
-Stage values:
+Stage values, as `.env.example` sets them:
 
 | Variable | Value |
 |---|---|
 | `LINE_LOGIN_CHANNEL_ID` | `1234567890`, the mock's channel |
-| `LINE_VERIFY_URL` | `http://localhost:4545/verify` |
+| `LINE_VERIFY_URL` | `http://127.0.0.1:4545/verify` |
 | `MAISON_LIFF_URL` | `http://localhost:3003` |
-| `MAISON_DEMO` and `DATABASE_FILENAME` | `true` and `.tmp/maison-demo.db`, on the command line |
 
 ### The demo's database
 
-The demo runs on its own SQLite file, `strapi/.tmp/maison-demo.db`, chosen with `DATABASE_FILENAME` when Strapi starts.
-- **Why not the dev database:** it holds an older seed, with an "Écrins" collection. Maison's seed skips loading whenever its first collection exists, so it can't repair that.
-- **What a separate file gives:** a known, clean start, reset by deleting one file. LaunchPad's own content stays on the dev database.
+The demo runs on the app's own SQLite file, `strapi/.tmp/data.db`.
+- **A fresh clone starts empty,** and `npm run setup` loads the catalog.
+- **To start over,** stop Strapi and delete the file. Deleting the seed's images in `strapi/public/uploads` is optional.
 
 ### Tokens and the app's client
 
-A setup script, `strapi/scripts/maison-setup.mjs`, runs against the running Strapi as the local admin. It's safe to run again: it replaces what it created before.
+A setup script, `strapi/scripts/maison-setup.mjs` (`npm run setup`), runs against the running Strapi as the demo admin. It's safe to run again: it replaces what it created before. It targets `STRAPI_URL`, or the port in `strapi/.env`, and says which first. It never prints a secret.
 
-1. **The first admin.** On a fresh database, it registers the local test admin, so the presenter signs in to the demo's admin with the credentials he already uses.
+1. **The first admin.** On a fresh database, it registers the demo admin from `strapi/.env`: `DEMO_ADMIN_EMAIL` (`admin@maison.example`) and `DEMO_ADMIN_PASSWORD`, which `npm install` generated. Scripts and tests sign in with it. Paul signs in to the admin himself, reading both values from `strapi/.env` in his editor.
 2. **Loads the demo catalog.**
 3. **Admin token "Maison customer"**, with `plugin::maison.catalog.read` and `plugin::maison.appointments.request`, owned by that admin.
 4. **Admin token "Maison ops"**, with only `plugin::maison.confirmations.send`. Its key goes into a gitignored file that the Claude Desktop setup reads (Part D).
 5. **OAuth client "Maison app"**, with customer sign-in LINE, public, and mapped to "Maison customer".
    - oauth-mcp-manager allows one active LINE client, so the script deactivates any other active one (it doesn't delete it) and names it.
-   - The client ID goes into the app's `.env` as `NEXT_PUBLIC_MAISON_CLIENT_ID`.
+   - The client ID goes into the app's `.env` as `NEXT_PUBLIC_MAISON_CLIENT_ID`, which is kept mode 600.
    - LINE clients never use the consent page: `/authorize` refuses them.
 
-**No staff token.** Staff work in the Strapi admin (Part D), where the board and the chat check the signed-in admin's role. No MCP client works for staff on stage, so a staff token would be a standing credential with nothing to do.
+**No staff token.** Staff work in the Strapi admin (Part D), where the board checks the signed-in admin's role. No MCP client works for staff on stage, so a staff token would be a standing credential with nothing to do.
 
 **Production note** (README and slide):
 - The customer token should belong to a dedicated service admin with a narrow role. A token's permissions are clamped to its owner's, so a narrow owner can't be widened by mistake.
@@ -95,50 +126,37 @@ A setup script, `strapi/scripts/maison-setup.mjs`, runs against the running Stra
 
 Maison already hides an appointment's `customer`:
 - Its staff tools and its board mask it.
-- The Content Manager's views don't show the field.
+- The Content Manager's views don't show it.
 
-The admin API still returned it, which the in-admin chat exposed (found on 30 September):
-- **The cause:** Strapi's admin sanitizer returns every `visible: false` attribute to any admin who can read the type, whatever the role's field permissions say.
-- **The effect:** strapi-plugin-tanstack-ai's `search_content` showed full LINE user IDs to the Super Admin.
-
-The fix is a LaunchPad plugin extension that marks the attribute `hidden` in the schema's config, a flag the sanitizer honours:
-- **What changes:** the Content Manager API and the chat's search no longer return the field, filters on it are dropped, and a Content Manager save can't overwrite it.
+The demo adds a plugin extension, as defense in depth:
+- **Why:** Strapi's admin sanitizer returns every `visible: false` attribute to any admin API consumer that can read the type, whatever the role's field permissions say. It was found on 30 September through strapi-plugin-tanstack-ai's content search, which returned full LINE user IDs to the Super Admin. The demo no longer installs that plugin, but any admin client could do the same. The Content Manager's list search (`_q`) also matches text fields by substring.
+- **The fix:** mark the attribute `hidden` in the schema's config, a flag the sanitizer honours, and `searchable: false`, which the database search honours.
+- **What changes:** the admin API no longer returns the field, filters on it are dropped, a Content Manager save can't overwrite it, and the list search doesn't match it.
 - **What doesn't:** Maison's services use the Document Service, and still read and write it.
-- **Where it belongs:** in Maison's own schema, as a follow-up.
-
-### The in-admin chat
-
-strapi-plugin-tanstack-ai 1.6.0 adds a chat panel to the admin. Its tools:
-- its own content tools (`list_content_types`, `search_content`, `aggregate_content`)
-- six `maison__*` tools from Maison's `ai-tools` service: the four catalog tools, `appointment_requests` and `confirm_appointment`
-
-Each tool needs its action on the admin's role, and the Super Admin has them all.
-
-- **Model:** Claude Sonnet 5 with `ANTHROPIC_API_KEY` in `strapi/.env`, otherwise `qwen3-14b-32k` on Ollama. The chat can't turn Qwen3's thinking off, so on the local model an answer takes one to two minutes.
-- **When the model can't be reached,** the chat's answer ends with "fetch failed".
+- **Where it belongs:** in Maison's own schema, as a follow-up in its repo. The extension goes once the demo's copy has it.
 
 ### Hosting
 
-None for the stage. Strapi, the app and the mock verify endpoint all run on the laptop. The models need the internet unless the local model is used, and Claude Desktop always does.
+None for the stage. Strapi, the app and the mock verify endpoint all run on the laptop. The concierge needs the internet unless it uses the local model, and Claude Desktop always does.
 
 ### Dev servers while it's built
 
 Claude Code's preview runner owns the long-running servers:
-- `maison-strapi`: Strapi on 1338, on the demo database
-- `maison-app`: the app on 3003, and the verify mock on 4545
+- `demo-strapi`: Strapi on 1338
+- `demo-app`: the app on 3003, and the verify mock on 4545
 
-The implementers don't start or stop them.
+The implementers don't start or stop them. The LaunchPad servers that ran the demo before are retired, and LaunchPad's branch stays as the archive of the ported commits.
 
 ## Part B: The Maison app (`liff/`)
 
-A new frontend in the LaunchPad monorepo, next to `next/`, `astro/`, `nuxt/` and `tanstack/`:
-- **Registered in `scripts/frontends.mts`** as `liff`: port 3003, Strapi URL key `NEXT_PUBLIC_STRAPI_URL`, and no admin preview target.
-- **`yarn setup` installs it**, and a new root script, `yarn dev:liff`, starts it with Strapi. The app's own `dev` script also starts the mock verify endpoint. `yarn dev:liff` waits for Strapi on the port in `strapi/.env`, so on a laptop where that port is taken, Strapi and the app are started separately.
-- **Not inside `next/`:** LaunchPad's Next app redirects every path to a locale and wraps pages in the marketing layout. The Maison app needs neither.
+The repo's second app, next to `strapi/`:
+- **`npm run dev` at the root** starts it with Strapi, and the app's own `dev` script also starts the mock verify endpoint. `npm run dev:app` starts it alone.
+- **Ported from LaunchPad,** where it was a frontend of its own (`liff/`), without LaunchPad's frontend registration.
 
 ### Stack
 
-- Next.js 16 (App Router), React 19, TypeScript and Tailwind, matching LaunchPad's `next/` versions (Next ^16.3.1, React ^19.2.8, TypeScript 5, Tailwind 3.4)
+- Next.js 16 (App Router), React 19, TypeScript and Tailwind 3.4
+- Cormorant Garamond, self-hosted from `@fontsource/cormorant-garamond`, so nothing is downloaded at build or run time
 - `@line/liff` and `@line/liff-mock`, the MCP SDK client, and AI SDK 7 for the concierge, with `@ai-sdk/openai-compatible` for the local model
 - APIs taken from the installed packages, as recorded in the plan
 
@@ -156,7 +174,7 @@ A new frontend in the LaunchPad monorepo, next to `next/`, `astro/`, `nuxt/` and
 1. Initialize LIFF, in mock or real mode. In real mode outside LINE, when not logged in, call `liff.login()`.
 2. `POST` `liff.getIDToken()` to the token endpoint with the token-exchange parameters (oauth-mcp-manager spec).
 3. Keep the session token in memory. Never put it in `localStorage`, and never send LINE profile data to any server (LINE's guidance).
-4. On a `401` from `/mcp`, exchange again, once.
+4. On a `401` from `/mcp`, exchange again, once. Calls that get their 401 together share that one exchange and reconnect.
 5. Handle the token endpoint's two errors differently:
    - **`temporarily_unavailable` (503):** LINE couldn't be reached, answered 408 or 429, or the LINE client needs an admin. Wait for `Retry-After` (at most 10 seconds) and try once more. Then say "try again in a moment", with a retry button.
    - **`invalid_grant` (400):** LINE refused the ID token. Never retry it. Inside LINE, log out and start a new LINE login. With the mock, show the error: it means the app and Strapi disagree about the channel.
@@ -164,6 +182,7 @@ A new frontend in the LaunchPad monorepo, next to `next/`, `astro/`, `nuxt/` and
 ### MCP client (`lib/mcp.ts`)
 
 - A single `Client` with `StreamableHTTPClientTransport` to `${STRAPI_URL}/mcp`, with the session token in `Authorization`.
+- After a 401, the first call to notice reconnects with a new token, and the others join it. The old connection is closed once no call is still using it, so no call is cut off.
 - Screens call `client.callTool({ name, arguments })` and render `structuredContent`.
 - Each call is recorded for the agent view: tool name, arguments, result, duration and screen.
 - An `isError` result's JSON gives `{ code, message, hint }`. A plain-text result from the SDK's schema check (`Input validation error: …`, as for a date that isn't on the calendar) counts as `invalid_input`.
@@ -196,10 +215,10 @@ On a screen wider than 500 px, the app renders inside a phone-sized frame on a d
 - **Runtime:** Node.
 - **Request:** `{ messages, locale }`, with `Authorization: Bearer <customer session token>`. The route never holds its own Strapi credentials.
 - **MCP client:** created per request to Strapi `/mcp`, with the customer's token and `x-maison-surface: concierge`. Tools come from `tools/list`, so the model sees exactly what this customer's token allows.
-- **Model:**
+- **Model,** from the keys in `liff/.env`:
   - `ANTHROPIC_API_KEY`: Claude Sonnet 5, `anthropic('claude-sonnet-5')`
   - `AI_GATEWAY_API_KEY`: the AI Gateway string `'anthropic/claude-sonnet-5'`
-  - neither: `qwen3-14b-32k` through Ollama's OpenAI-compatible API (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`), with thinking off (`reasoning_effort: "none"`). Ollama returns thinking separately, so none of it reaches the chat either way; off, it's faster.
+  - neither, the default: `qwen3-14b-32k` through Ollama's OpenAI-compatible API (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`), with thinking off (`reasoning_effort: "none"`). Ollama returns thinking separately, so none of it reaches the chat either way; off, it's faster.
   - Tool use is capped at 6 steps per turn, and the reply is streamed.
 - **Streaming to the UI:**
   - text deltas
@@ -231,6 +250,7 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
 
 - **Unit tests (vitest):**
   - the token exchange, with its one retry after a 401 and the two sign-in errors
+  - calls that get a 401 together sharing one reconnect, with none cut off
   - the MCP call recorder, and reading validation errors
   - the model choice, including that thinking is off in the request Ollama receives
   - formatting and real dates
@@ -244,11 +264,11 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
 - **API tests (Playwright):**
   - over MCP, each customer's `my_appointments` lists only their own visits
   - the admin API never returns an appointment's `customer`
-  - the Super Admin's chat offers the six `maison__*` tools
-- **Live tests on the local model,** opt-in, skipped when Ollama isn't up:
-  - The concierge answers the demo question through the catalog tools. Every product it names must have come back from a tool call, and one must fit the question.
-  - The in-admin chat, asked for the requests, calls `maison__appointment_requests` and shows no full LINE user ID.
-- **The Maison MCP smoke tests,** run again with oauth-mcp-manager linked, so the plain-admin-token check goes through its real `resolveSubject`.
+- **A live test on the local model,** opt-in, skipped when Ollama isn't up: the concierge answers the demo question through the catalog tools. Every product it names must have come back from a tool call, and one must fit the question.
+- **Maison's own tests, inside the demo:**
+  - its unit tests, in the root `npm test`
+  - its integration tests, against the demo's Strapi, including one that its validation errors are Strapi's own
+  - its MCP smoke tests, with oauth-mcp-manager installed, so the plain-admin-token check goes through its real `resolveSubject`
 
 ## Part C: LINE (simulated on stage, real LINE optional)
 
@@ -276,8 +296,8 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
 ### Staff, in the Strapi admin
 
 - **The Maison board** shows requests from the app and the concierge within 5 seconds, with the customer masked. On stage its filter is "All requests", so a confirmed row stays in view and changes status. **Confirm** appears on waiting requests whose visit is still ahead.
-- **The in-admin chat** confirms too: "APT-… を確定してください" calls `maison__confirm_appointment`.
-- **Confirming** publishes the appointment, whichever way it's done. It messages nobody.
+- **Confirming** publishes the appointment. Publishing it in the Content Manager does the same. Either way, it messages nobody.
+- **Staff are people here.** Maison's staff tools (`appointment_requests`, `confirm_appointment`) serve staff agents over MCP, and no staff agent runs on stage.
 
 ### The ops agent (Claude Desktop, on the stage laptop)
 
@@ -293,31 +313,27 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
 
 ### A customer's note is data, not an instruction
 
-A customer's note (up to 500 characters) reaches staff's chat through `appointment_requests`, and could try to instruct the model.
-- **What guards against it:** the tool descriptions tell the model to treat notes as information, and to confirm only a reference the staff member asked for. The chat has no approval step for tool calls, though.
+A customer's note (up to 500 characters) reaches any staff agent that calls `appointment_requests`, and could try to instruct the model. On stage only people read notes, on the board, so this is a production note.
+- **What guards against it:** the tool descriptions tell the model to treat notes as information, and to confirm only a reference the staff member asked for.
 - **What limits the damage:**
-  - The chat can only confirm a future visit request. It can't message a customer, change content, or see a full LINE user ID.
+  - The staff tools can only confirm a future visit request. They can't message a customer, change content, or see a full LINE user ID.
   - Every confirmation shows on the board.
   - The message goes out only through the separate ops agent.
-- **In production:** keep `appointments.confirm` off the chat's role, or add an approval step for tools that write.
-
-This is a talk note: agents read what people wrote, so scope the tools, show every action, and keep a person in the loop for writes.
+- **In production:** keep `appointments.confirm` off an agent's token, or add an approval step for tools that write.
 
 ## Part E: The demo run
 
 ### Models
 
-- **On stage:** Claude, with `ANTHROPIC_API_KEY` in `strapi/.env` and `liff/.env`, on a phone hotspot.
-- **Rehearsal, or offline:** the local model, with no keys and Ollama running.
-  - It's slower: 20–60 seconds a concierge turn, and one to two minutes a chat answer.
-  - So staff confirm on the board.
-- **Either way:** switching is only the keys and a restart of Strapi and the app. Claude Desktop needs the internet in both modes.
+- **On stage:** Claude for the concierge, with `ANTHROPIC_API_KEY` in `liff/.env`, on a phone hotspot.
+- **Rehearsal, or offline:** the local model, with no key and Ollama running. It's slower: 20–60 seconds a concierge turn.
+- **Either way:** switching is only the key and a restart of the app. Strapi runs no model. Claude Desktop needs the internet in both modes.
 
 ### Before going on stage
 
-- **Start everything:** Strapi on the demo database, and the app, which starts the mock verifier.
-- **Reset the data:** on the Maison admin page, reset demo appointments (it asks first), and set the board to "All requests". For a clean slate, delete the demo database and run the setup script again.
-- **Warm up:** ask the concierge and the chat one question each (on the local model, this also loads it), and check that Claude Desktop lists the two ops tools and the prompt.
+- **Start everything:** `npm run dev` starts Strapi, the app and the mock verifier.
+- **Reset the data:** on the Maison admin page, reset demo appointments (it asks first), and set the board to "All requests". For a clean slate, delete `strapi/.tmp/data.db` and run `npm run setup` again.
+- **Warm up:** ask the concierge one question (on the local model, this also loads it), and check that Claude Desktop lists the two ops tools and the prompt.
 - **Network:** put the laptop on a phone hotspot. Turn Do Not Disturb on.
 
 ### The 3-minute run
@@ -328,14 +344,13 @@ This is a talk note: agents read what people wrote, so scope the tools, show eve
 | 0:30–1:10 | AX for the customer | Ask the concierge for a gift under ¥400,000 for someone who travels, and a Ginza visit on Saturday at 2 pm. Tool chips appear, then product cards. |
 | 1:10–1:30 | Booking | Say yes. The request is sent and awaits the boutique. |
 | 1:30–1:50 | The request arrives | It appears on the Maison board, created via the concierge, with the customer masked. |
-| 1:50–2:20 | Staff confirm | Confirm on the board, or ask the in-admin chat to confirm it. |
-| 2:20–2:45 | AX for staff | In Claude Desktop, run `send_pending_confirmations`. It shows the visit and its ready-made LINE message. With option A, the phone buzzes and the board shows LINE sent. |
+| 1:50–2:20 | Staff confirm | Confirm on the board. |
+| 2:20–2:45 | AX for operations | In Claude Desktop, run `send_pending_confirmations`. It shows the visit and its ready-made LINE message. With option A, the phone buzzes and the board shows LINE sent. |
 | 2:45–3:00 | Handoff | The integration slide (Part F). "Everything is ready for a LINE MINI App: sign-in, tools, and the message." QBurst takes over. |
 
 ### Fallbacks
 
 - **The concierge stalls, or the network drops:** use the product page's "Book a visit", which calls the same `request_appointment` tool.
-- **The chat is slow or fails:** confirm on the board.
 - **Claude Desktop fails:** show the confirmed row on the board, and the message on the slide.
 - **Any beat stalls for more than 10 seconds:** switch to the backup video.
 
@@ -353,23 +368,22 @@ Recorded after the final rehearsal passes:
 - [ ] Check that the concierge's Japanese and English replies are natural and follow the instructions.
 - [ ] Time each beat.
 - [ ] In the admin:
-  - the chat's Tools menu lists the six `maison__*` tools
-  - asked to search appointments, the chat shows no LINE user ID
   - the board refreshes, confirms and filters
   - the reset asks first
-  - the Content Manager shows no customer
+  - the Content Manager shows no customer, and its list search doesn't find one
 - [ ] With option A, check the blocked-account case (Part C).
 - [ ] Record the backup video.
 
 ## Part F: Integration slides and handoff to QBurst
 
-1. **From UX to AX.** One content model, one MCP server, four consumers: screens, a customer's agent, a staff chat and an ops agent. Permissions, a human gate and verification keep the agents honest.
+1. **From UX to AX.** One content model, one MCP server, three consumers: screens, a customer's agent and an ops agent. Staff confirm in Strapi. Permissions, a human gate and verification keep the agents honest.
 2. **Plugging in a LINE MINI App.**
    1. The MINI App calls `liff.getIDToken()`.
    2. oauth-mcp-manager exchanges it for a session (RFC 8693) after LINE verifies it.
    3. The app and its concierge call the Maison tools on Strapi `/mcp`.
    4. Staff confirm in Strapi. Confirmations go out through the Messaging API: LINE Bot MCP today, MINI App service messages once verified.
 3. **What's ready for the MINI App team:**
+   - the maison-demo repo, which they can clone and run, and then point at their MINI App channel (option B)
    - the token endpoint and its parameters, and its two errors: `invalid_grant` (sign in again) and `temporarily_unavailable` (retry after `Retry-After`)
    - the tool list (customer and staff tools) and its error codes
    - the confirmation's flex message

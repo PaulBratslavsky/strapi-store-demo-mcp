@@ -1,7 +1,7 @@
 # AX luxury demo: overview
 
 - **Date:** 2026-09-29
-- **Status:** Revised 2026-09-29: the stage demo runs without LINE channels, and QBurst presents the MINI App side. Amended 2026-09-30 for the plugins as built: staff confirm on the Maison board or through an in-admin chat, and a local model stands in when there's no API key.
+- **Status:** Revised 2026-09-29: the stage demo runs without LINE channels, and QBurst presents the MINI App side. Amended 2026-09-30 for the plugins as built: staff confirm on the Maison board, and a local model stands in for the concierge when there's no API key. Moved the same day to a standalone repo, maison-demo, without an in-admin chat.
 - **Talk:** "Content Infrastructure for the AI Era: Building Experiences for Humans and AI"
 - **Event:** "Building the AI-Powered Connected Experience" by QBurst with LY Corporation. **7 October 2026**, LY Corporation office, Akasaka Trust Tower, Tokyo. Invitation-only, for senior CX, marketing and product leaders. The event's themes include "MINI App integrations with AI-enabled tools and content management systems". LY Corporation's talk covers LINE MINI App and Agent i, and the panel includes LVMH Japan's IT Digital Director.
 - **Slot:** 6:00–6:15 PM JST (15 minutes) with a 3-minute demo
@@ -9,17 +9,16 @@
 - **Sub-project specs:**
   1. [Maison plugin](2026-09-29-maison-plugin-design.md): content types, MCP tools and seed data
   2. [oauth-mcp-manager 1.1](2026-09-29-oauth-mcp-manager-line-design.md): LINE sign-in for customers
-  3. [LaunchPad integration, LIFF app and demo](2026-09-29-launchpad-liff-demo-design.md)
+  3. [The maison-demo repo, the Maison app and the demo](2026-09-29-launchpad-liff-demo-design.md)
 
 ## Goal
 
-Show, live, that one content model exposed through one MCP server serves people and agents alike. The talk's claim is "UX and AX", not "AX instead of UX". The same Strapi tools power four things:
+Show, live, that one content model exposed through one MCP server serves people and agents alike. The talk's claim is "UX and AX", not "AX instead of UX". The same Strapi tools power three things:
 - the screens of a customer app built for LINE
 - an AI concierge acting for a customer
-- a chat in the Strapi admin, where staff review and confirm requests
 - an ops agent that prepares, and optionally sends, the customer's LINE confirmation
 
-Scoped permissions, a human approval step and verification keep the agents honest.
+In between, staff review and confirm requests on the Maison board in the Strapi admin. LINE is the customer's identity and messaging channel. Scoped permissions, that human approval step and verification keep the agents honest.
 
 On stage the app runs in a browser at phone size, with LINE sign-in simulated by LINE's official LIFF mock. The code path is the production one. The LINE MINI App integration is shown on a slide and presented by QBurst.
 
@@ -28,7 +27,7 @@ The demo maps to the brief's six AX needs:
 | AX need | Where the audience sees it |
 |---|---|
 | Structured context | A typed content model; tool schemas with enums; ready-made LINE messages returned by a tool |
-| Tools | Ten custom tools on Strapi's built-in `/mcp`, six of them also in the admin's chat |
+| Tools | Ten custom tools on Strapi's built-in `/mcp` |
 | Permissions | A customer token, an ops token and the staff's admin role, each with different rights. Identity comes from LINE sign-in, never from the model. |
 | Verification | Writes read their record back. The ops agent checks the customer is reachable before claiming a send. |
 | Recovery | Tool errors carry a code and a hint for what to do next |
@@ -39,14 +38,14 @@ The demo maps to the brief's six AX needs:
 1. In one 3-minute run, the audience sees four things:
    - a customer browse the Maison app
    - the concierge request an appointment as a draft
-   - a staff member confirm it on the Maison board, or by asking the in-admin chat
+   - a staff member confirm it on the Maison board
    - an ops agent pick it up with a ready-made LINE confirmation
 
    With the presenter's own Official Account (optional), the agent also delivers it to the phone.
 2. Every piece of data the app shows comes from an MCP tool call, and the "show agent view" toggle proves it on screen.
 3. No admin token ever reaches the customer's browser. A customer can only see and create their own appointments, and only as drafts. No full LINE user ID reaches a staff surface.
 4. The ops agent never reports a confirmation as sent unless the customer was reachable (LINE Get Profile succeeded) and LINE accepted the push.
-5. Both plugins install into LaunchPad with configuration only, and the Maison plugin installs into any Strapi 5.55.1+ app with MCP enabled.
+5. The demo is a repo of its own, maison-demo, that runs with `git clone`, `npm install`, `npm run dev` and `npm run setup`. oauth-mcp-manager installs from npm with configuration only, and the Maison plugin installs into any Strapi 5.55.1+ app with MCP enabled (the demo carries it as a local plugin).
 6. The demo can be reset and re-run in under a minute, and has a fallback for every step that uses AI.
 
 ## Decisions
@@ -57,12 +56,12 @@ The demo maps to the brief's six AX needs:
 | Language | Japanese (default) and English content, prices in whole yen | Japanese audience and LINE users |
 | Talk focus | From UX to AX: the same tools serve screens, a customer's agent and a staff agent. QBurst presents the MINI App side afterwards. | The user's call. It splits the stage cleanly: content infrastructure here, the LINE channel with QBurst. |
 | Customer app | Catalog plus AI concierge, built as a LIFF app so it's MINI App–ready. Shown on stage in a browser at phone size. | People and an agent use the same content in one app. The same code runs inside LINE once it has a LIFF ID. |
-| Demo story | Concierge with a human gate: draft, staff confirm (on the board or through the admin's chat), LINE delivery by an ops agent | Shows UX, AX, permissions, the human gate and delivery in one flow |
-| Models | Claude Sonnet 5 with an API key; without one, a local model (`qwen3-14b-32k` on Ollama) for the concierge and the chat | Rehearsal needs no key, and the local model is an offline fallback. Claude Desktop, the ops agent, still needs the internet. |
+| Demo story | Concierge with a human gate: draft, staff confirm on the Maison board, LINE delivery by an ops agent. No in-admin chat. | Shows UX, AX, permissions, the human gate and delivery in one flow. The story is customers' agents working with the store's data, with LINE as identity and messaging (the user's call, 30 September). |
+| Models | Claude Sonnet 5 with an API key; without one, a local model (`qwen3-14b-32k` on Ollama) for the concierge | Rehearsal needs no key, and the local model is an offline fallback. Claude Desktop, the ops agent, still needs the internet. |
 | Data access | Everything goes through Strapi's built-in MCP server, catalog screens included | The talk's point: the tools are the interface for both kinds of consumer |
 | No second MCP server | Extend Strapi's MCP with custom tools; the phone speaks MCP to Strapi's `/mcp` directly | Official extension points only |
 | Customer identity | New LINE token exchange in `strapi-oauth-mcp-manager` 1.1. Tools ask its `resolveSubject(authorization)` which LINE user holds the caller's session token. | Reuses the existing OAuth-for-MCP plugin and keeps identity out of the model's hands. Headers set by a middleware never reach tools (the MCP transport reads raw headers), so no identity header is used. |
-| Packaging | Two plugins: Maison (domain) and oauth-mcp-manager (identity). LaunchPad hosts them. | Portable to any Strapi app; each plugin extends independently |
+| Packaging | Two plugins: Maison (domain) and oauth-mcp-manager (identity). A repo of its own, maison-demo, hosts them: Maison as a local plugin in its Strapi app, oauth-mcp-manager from npm. | Portable to any Strapi app; each plugin extends independently. A standalone repo can be shared, and QBurst can run it. |
 | LINE on stage | **No LINE channel needed.** LINE's official LIFF mock signs in a demo customer. A local stand-in for LINE's ID-token verify endpoint accepts that customer's token. Everything else is the production path: ID token, then token exchange, then a session tied to `line:U…`. | The presenter can't get a MINI App channel (Japan-registered organizations and residents only), and there's no time to request one. Switching to a real LIFF app or MINI App is configuration only. |
 | Confirmation | The ops agent lists staff-confirmed visits, each with a ready-made LINE flex message, then hands over to QBurst. **Optional:** with the presenter's own Official Account, LINE Bot MCP delivers it to the phone. | The delivery channel is LINE's side of the story. A verified MINI App would use service messages instead. |
 | Hosting | Everything runs on the stage laptop: Strapi, the app and the mock verify endpoint. The concierge calls Claude over the internet. | No public URL is needed, and there are fewer moving parts |
@@ -76,11 +75,11 @@ flowchart LR
     APP["Maison app (LIFF app, LIFF mock)<br/>browser at phone size"]
     CON["/api/concierge<br/>Claude + MCP client"]
     MOCK["Mock LINE verify endpoint"]
-    subgraph Strapi["LaunchPad Strapi"]
+    subgraph Strapi["Strapi (maison-demo)"]
       OAUTH["oauth-mcp-manager 1.1<br/>token exchange + /mcp gate"]
       MCP["Built-in MCP server /mcp"]
       MAISON["Maison plugin<br/>content types + tools"]
-      ADMIN["Admin panel<br/>Maison board + chat"]
+      ADMIN["Admin panel<br/>Maison board"]
     end
     OPS["Claude Desktop (ops agent)"]
   end
@@ -96,7 +95,6 @@ flowchart LR
   MAISON -- "resolveSubject(authorization)" --> OAUTH
   MCP --> MAISON
   ADMIN --> MAISON
-  ADMIN --> CLAUDE
   OPS -- "ops token" --> MCP
   OPS -.-> LBM
 ```
@@ -109,7 +107,7 @@ In production the verify step goes to LINE's own endpoint and the app runs insid
 2. The app exchanges the ID token for a short-lived session token at oauth-mcp-manager's token endpoint, which verifies it with LINE's endpoint (the local stand-in on stage). The session is tied to `line:U…`.
 3. Catalog screens call Maison tools on Strapi `/mcp` directly, with no AI. The "agent view" shows each call.
 4. The customer asks the concierge for a gift and a boutique visit. Claude calls the same tools with the customer's session token and requests the appointment. It's saved as a draft owned by the signed-in LINE user.
-5. The request appears on the Maison board in the Strapi admin. A staff member confirms it there, or by asking the in-admin chat, which calls the same Maison tools with the admin's permissions. Confirming publishes the appointment.
+5. The request appears on the Maison board in the Strapi admin, and a staff member confirms it there. Confirming publishes the appointment.
 6. In Claude Desktop, the ops agent lists confirmed visits that still need a LINE confirmation, each with a ready-made LINE flex message. It can't approve or edit anything.
 7. **Default:** the agent runs `send_pending_confirmations` and stops at the ready-made message, and the presenter hands over to QBurst ("this is where LINE delivers it"). **Optional**, with the presenter's Official Account, the agent goes on:
    - it checks the customer is reachable (`get_profile`)
@@ -121,14 +119,14 @@ In production the verify step goes to LINE's own endpoint and the app runs insid
 | Who | Signs in through | Can | Can't |
 |---|---|---|---|
 | Customer (app and concierge) | LINE ID token exchange (LIFF mock on stage) | Browse, check availability, request appointments (drafts), see their own appointments | Publish, see other customers, edit content |
-| Staff member | Strapi admin login | Review and confirm requests (on the board, through the chat, or in the Content Manager), edit content, load or reset demo data | See a customer's full LINE user ID |
+| Staff member | Strapi admin login | Review and confirm requests (on the board, or in the Content Manager), edit content, load or reset demo data | See a customer's full LINE user ID |
 | Ops agent | The "Maison ops" admin token, directly or through oauth-mcp-manager's staff consent | List published appointments awaiting confirmation, record delivery outcomes | Approve, edit content, browse the catalog |
 | LINE Bot MCP (optional) | Messaging API channel access token | Check profiles and send LINE messages | Anything in Strapi |
 
 ## Build order
 
 1. **Maison plugin** and **oauth-mcp-manager 1.1** can be built in parallel. They share one service contract: `strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(authorizationHeader)` returns `line:U` + 32 hex characters, or `null`. Maison's tests stub it; oauth-mcp-manager's tests exercise it.
-2. **LaunchPad integration, the Maison app and the demo** need both plugins. They don't need LINE channels or hosting.
+2. **The maison-demo repo, the Maison app and the demo** need both plugins: Maison's code, and oauth-mcp-manager 1.1.0 on npm. They don't need LINE channels or hosting.
 
 Each sub-project gets its own implementation plan.
 
@@ -139,7 +137,7 @@ Each sub-project gets its own implementation plan.
 | House name | Placeholder "Maison" (plugin id `maison`) | Before seed content is written |
 | Venue network: the concierge needs Claude over the internet | Phone hotspot. The product page's Book button runs the same tool without AI. The local model runs offline, but slower. | Rehearsal |
 | Optional real LINE delivery: the presenter's own Official Account from a US-based account | Not needed for the default run. Try it once the demo works end to end. | 5 October 2026 |
-| Handoff to QBurst | Share the integration slide and the "what's ready" list (Part F of the LaunchPad spec) with QBurst before the event | 5 October 2026 |
+| Handoff to QBurst | Share the integration slide, the "what's ready" list (Part F of the demo spec) and the maison-demo repo with QBurst before the event | 5 October 2026 |
 | Time: 8 days to the event | Build order below. If time runs short, cut the admin demo page (seed by script instead), the failure beat, and English UI copy, in that order. Never cut the demo scenario itself. | Daily |
 | Concierge model and provider wiring | Claude Sonnet 5 through the AI SDK, or `qwen3-14b-32k` on Ollama without a key. Both checked against the installed packages on 30 September. | Plan for sub-project 3 |
 | Relations between non-localized, draft/publish and localized types in Strapi 5.55 | Verified in the first task of the Maison plan. Fallback: store slugs instead of relations. | First task of sub-project 1 |
