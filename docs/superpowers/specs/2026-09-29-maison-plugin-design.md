@@ -1,7 +1,7 @@
 # Maison plugin: design
 
 - **Date:** 2026-09-29
-- **Status:** Draft for review
+- **Status:** Draft for review. Amended 2026-09-30: staff review and confirmation, chat tools for the in-admin chat, and the requests board (see "Four surfaces").
 - **Overview:** [AX luxury demo overview](2026-09-29-ax-luxury-demo-overview.md)
 - **Repo:** this one (`strapi-store-demo-mcp`). The store-analytics code it started from is replaced.
 
@@ -125,10 +125,14 @@ Registered in `bootstrap` with `admin::permission` `actionProvider.registerMany`
 
 | Action UID | Display name | Used by |
 |---|---|---|
-| `plugin::maison.catalog.read` | MCP: browse the catalog | Customer tools |
+| `plugin::maison.catalog.read` | MCP: browse the catalog | Catalog tools, on MCP and in the chat |
 | `plugin::maison.appointments.request` | MCP: request and view own appointments | Customer tools |
-| `plugin::maison.confirmations.send` | MCP: send appointment confirmations | Ops tools and prompt |
-| `plugin::maison.demo.manage` | Load and reset demo data | Admin page |
+| `plugin::maison.appointments.review` | MCP: review appointment requests | `appointment_requests`, on MCP and in the chat; the requests board |
+| `plugin::maison.appointments.confirm` | MCP: confirm appointment requests | `confirm_appointment`, on MCP and in the chat; the board's Confirm button |
+| `plugin::maison.confirmations.send` | MCP: send appointment confirmations | Ops tools and prompt; `pending_confirmations` in the chat |
+| `plugin::maison.demo.manage` | Load and reset demo data | Admin page (demo data) |
+
+The two staff actions use the same `subCategory: 'mcp'` as the other tool actions. They also gate the chat and the admin page, so one grant on a staff role covers every surface.
 
 ## Identity contract
 
@@ -137,6 +141,35 @@ Registered in `bootstrap` with `admin::permission` `actionProvider.registerMany`
 - **The result must match `^line:U[0-9a-f]{32}$`.** Anything else, `null`, a plain admin token, or oauth-mcp-manager not being installed all return `not_signed_in`.
 - **A session token can't be forged,** so the identity can't be either. This plugin never accepts identity as a tool argument.
 - **The helper is exposed as `strapi.plugin('maison').service('identity').getCustomerSubject(extra)`,** so app-level tools can reuse it.
+
+## Four surfaces
+
+One set of Maison services serves four surfaces. Each surface calls the same service method under the same permission, so staff get the same answer however they ask.
+
+| Surface | Used by | Reaches the services through | Gate |
+|---|---|---|---|
+| MCP tools on `/mcp` | The customer app, its concierge, an ops agent in Claude Desktop | `strapi.ai.mcp.registerTool` in `register()` | The token's Maison permissions (`auth.policies`) |
+| In-admin chat | Staff, through `strapi-plugin-tanstack-ai` 1.6.0 | The `ai-tools` service, built from the MCP tool definitions | The signed-in admin's role, one action per tool |
+| Maison admin page | Staff | Admin routes under `/maison` | `admin::hasPermissions` |
+| Content Manager | Staff | Strapi's own editing and Publish | Content Manager permissions |
+
+In the talk, staff ask the chat about new requests and confirm one. The ops agent in Claude Desktop then sends the LINE confirmation with the existing tools, and the requests board shows each step land.
+
+- **Staff actions.** `appointments.review` and `appointments.confirm` join the four existing actions (see "Permissions").
+- **Staff service methods.** `appointments.listRequests(filters)` and `appointments.confirm(reference, now?)` live in the appointments service, not a new one. They reuse its private helpers (published labels, confirmation state, delivery state) and its rule that publishing an appointment confirms it.
+- **Staff MCP tools.** `appointment_requests` and `confirm_appointment` (see "Staff" in the tool contract).
+- **Chat tools.** A service named `ai-tools` implements the `strapi-plugin-tanstack-ai` 1.6.0 contract:
+  - **Contract.** `getTools()` returns `[{ name, description, schema, action, execute }]` and `getMeta()` returns `{ label, description }`. The chat looks for the service on every installed plugin, offers the tools as `maison__<name>`, and shows each one only to admins whose role holds its `action`.
+  - **One adapter.** Every chat tool is an MCP tool definition passed through one adapter, so the two surfaces can't drift. It keeps the same name, description, input schema and permission. `execute(args)` validates `args` with the schema, runs `createHandler(strapi, context)({ args, extra: {} })`, and returns `structuredContent`. An `isError` result becomes `{ error: { code, message, hint } }`.
+  - **No handler context.** The chat gives `execute` no admin user or ability. No Maison handler reads the MCP handler context, so the adapter passes a placeholder.
+  - **Offered:** `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `appointment_requests`, `confirm_appointment`, and `pending_confirmations`, which is read-only.
+  - **Not offered:** `request_appointment` and `my_appointments` need a signed-in LINE customer, and a chat has an admin instead. `record_confirmation` only follows a LINE push, which the ops agent makes.
+  - **Disabled tools.** Tools listed in `disabledTools` are left out of the chat as well as MCP.
+  - **Zod.** The chat's `@tanstack/ai` 0.52 converts a schema through its Standard JSON Schema (`~standard.jsonSchema`), which zod 4 provides. Maison's schemas come from `@strapi/utils`, which is zod 4.4.3 in Strapi 5.55.1. The chat plugin builds its own tools with the same `z`.
+- **Admin routes and page.** See "Admin page".
+- **Content Manager.** Publishing an appointment there is the same confirmation as `confirm_appointment` and the board's Confirm button.
+
+**LaunchPad, not this plugin, installs the chat.** The LaunchPad plan (plan 3) installs `strapi-plugin-tanstack-ai` and configures it with `chat: { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: env('ANTHROPIC_API_KEY') }`. Maison only provides the `ai-tools` service. Without the chat plugin, nothing calls it.
 
 ## Tool contract
 
@@ -178,6 +211,40 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 - **Output:** `{ appointments: [{ reference, status: "requested" | "confirmed", boutique, requestedFor, products, confirmationSent }] }`, newest first. Only the caller's appointments.
 - **Status:** `confirmed` means a published version exists. `confirmationSent` means a `sent` notification exists.
 
+### Staff: `appointments.review` and `appointments.confirm`
+
+Staff tools act as whoever holds the token or admin session. They never take or show a customer's identity.
+
+`appointment_requests` (`appointments.review`)
+
+- **Input:**
+  - `status?`: `requested` (the default), `confirmed` or `all`
+  - `boutique?`: a slug
+  - `date?`: `YYYY-MM-DD`, a calendar day in the configured timezone
+  - `limit?`: 1–50, default 20
+  - `locale?`, like every read
+- **Status:**
+  - `requested` lists what staff can still confirm: no published version yet, and the visit hasn't started.
+  - `confirmed` lists appointments with a published version.
+  - `all` lists everything, including unconfirmed requests whose time has passed.
+- **Order:** `requested` by visit time, soonest first. `confirmed` and `all` newest request first (`createdAt`).
+- **Output:** `{ appointments: [{ reference, status, customer, boutique: { slug, name } | null, requestedFor, products: [{ slug, name }], note, createdVia, confirmationSent, createdAt }] }`
+  - `customer` is masked: `line:U`, three characters, `…`, the last two, as in `line:U4af…88`. Anything that isn't a valid subject shows as `unknown`. The full subject is never returned.
+  - `requestedFor` and `createdAt` are ISO 8601 in the configured timezone, via `toZonedIso`.
+- **Labels** come from published versions, in `locale` with a fallback to `defaultLocale`, and never from drafts. A boutique that's no longer published is `null`, and an unpublished product is left out.
+- **Errors:** `not_found` for an unknown boutique.
+
+`confirm_appointment` (`appointments.confirm`)
+
+- **Input:** `reference`, matching `^APT-\d{4}$` like `record_confirmation`.
+- **Checks, in order:**
+  1. The appointment exists (`not_found`).
+  2. If it's already published, it returns the appointment with `alreadyConfirmed: true` and changes nothing.
+  3. The visit hasn't started, meaning `requestedFor` isn't before now (`in_the_past`).
+- **Action:** publishes the draft with the Document Service, `publish({ documentId })`, which is exactly what Publish in the Content Manager does. It never messages anyone.
+- **Output:** `{ appointment, alreadyConfirmed }`, where `appointment` has the `appointment_requests` shape.
+- **Description:** says the tool confirms the customer's request, that the LINE ops agent messages the customer separately, and that the tool itself sends nothing.
+
 ### Confirmations: `confirmations.send`
 
 `pending_confirmations`
@@ -215,10 +282,29 @@ It also explains why: LINE's push API returns 200 even when it can't deliver.
 
 ## Admin page
 
-A "Maison" menu entry gated by `demo.manage`, with two actions:
+A "Maison" menu entry, shown to admins who hold `appointments.review` or `demo.manage`. The page has two sections, and each appears only with its permission.
+
+**Requests board** (`appointments.review`)
+
+- A table of appointments with a status filter: waiting for staff (`requested`), confirmed, or all. It refreshes every 5 seconds, so a request from the app or the concierge appears without a reload.
+- **Columns:** reference, masked customer, boutique, visit time (the boutique's wall-clock time), products, a status badge, a "LINE sent" badge, and created via.
+- **Confirm button:** on requests staff can still confirm, shown only with `appointments.confirm`. A failure shows the server's message.
+
+**Demo data** (`demo.manage`)
 
 - **Load demo catalog:** runs the seed. It's idempotent, and reports what it created.
-- **Reset demo appointments:** deletes all appointments and notifications. The catalog is untouched.
+- **Reset demo appointments:** deletes all appointments and notifications. The catalog is untouched. The board refreshes right away.
+
+The page uses `@strapi/design-system`, `useFetchClient`, `useNotification`, `useRBAC` and the `Page`/`Layouts` helpers. It calls these admin routes, which are served at `/maison/...` and gated by `admin::isAuthenticatedAdmin` plus `admin::hasPermissions`:
+
+| Route | Permission | Response |
+|---|---|---|
+| `GET /maison/appointments`, query: the `appointment_requests` filters | `appointments.review` | `{ appointments }`. 400 for bad filters, 404 for an unknown boutique. |
+| `POST /maison/appointments/:reference/confirm` | `appointments.confirm` | `{ appointment, alreadyConfirmed }`. 404 for `not_found`, 400 for `in_the_past` or a malformed reference. |
+| `POST /maison/demo/seed` | `demo.manage` | The seed counts |
+| `POST /maison/demo/reset` | `demo.manage` | The reset counts |
+
+Errors use Strapi's error body, with the tools' `code` and `hint` in `details`. The routes validate with the tools' zod inputs and call the same service methods, so the board and the tools can't disagree.
 
 ## Seed data
 
@@ -244,7 +330,7 @@ Shipped in the package: JSON content plus images under `server/seed/`.
 | `defaultLocale` | `ja` | Default for `locale` inputs |
 | `maxOpenRequestsPerCustomer` | `3` | Abuse limit |
 | `houseName` | `{ ja: "メゾン", en: "Maison" }` | Flex message header |
-| `disabledTools` | `[]` | Tool names not to register |
+| `disabledTools` | `[]` | Tool names not to register on MCP or offer in the chat. Disabling `pending_confirmations` or `record_confirmation` also drops the `send_pending_confirmations` prompt. |
 
 ## Extension points
 
@@ -252,7 +338,8 @@ Shipped in the package: JSON content plus images under `server/seed/`.
 - **Services** for app-level tools registered in the app's own `register()`:
   - `identity.getCustomerSubject(context)`
   - `errors.toolError(code, message, hint)`
-  - `catalog` and `appointments` services, holding the same logic the tools use
+  - `catalog` and `appointments` services, holding the same logic the tools use, including `appointments.listRequests` and `appointments.confirm`
+- **Chat:** the `ai-tools` service answers any chat that speaks the `strapi-plugin-tanstack-ai` contract.
 - **Config:** `disabledTools` turns tools off without forking.
 
 ## Plugin structure
@@ -262,19 +349,26 @@ server/src/
   register.ts            registers tools and the prompt (MCP locks its set at start)
   bootstrap.ts           registers permission actions
   content-types/         six schemas
-  services/              identity, errors, catalog, appointments, confirmations, seed, flex-message
+  services/              identity, errors, catalog, appointments, confirmations, seed, ai-tools (chat)
+  domain/                pure helpers: hours, time, subject (with masking), flex message, text, validation
   mcp/tools/             one file per tool: schema, description, handler
   mcp/prompts/           send-pending-confirmations.ts
-  routes/ controllers/   admin routes for seed and reset
+  routes/ controllers/   admin routes for the requests board, seed and reset
 server/seed/             content JSON and images
-admin/src/               Maison page (seed and reset buttons)
+admin/src/               Maison page: requests board and demo data
 ```
 
 ## Testing
 
-- **Unit tests (vitest):** opening-hours and timezone checks, the subject validation regex, error formatting, flex message builder, input schemas, and the reference generator.
-- **Integration tests** against a running Strapi (LaunchPad on its local branch), calling `/mcp` with curl-style requests:
-  - a customer token lists only the six customer tools, and an ops token only the two ops tools (plus core's built-in `log` tool, which appears in development mode only)
+- **Unit tests (vitest):** opening-hours and timezone checks, the subject validation regex, customer masking, calendar-day ranges, error formatting, flex message builder, input schemas, and the reference generator. Also:
+  - the chat adapter: its tool list and actions, the unwrapping of results and errors, and its schemas as JSON Schema
+  - the admin routes' gates and the controller's status codes
+- **Service integration tests** boot LaunchPad's Strapi against a throwaway database:
+  - staff review and confirmation, including masking, the sort rules, and labels that ignore draft edits
+  - the chat tools, run through `execute`
+- **MCP smoke tests** against a running Strapi (LaunchPad on its local branch), calling `/mcp` with curl-style requests:
+  - a customer token lists only the six customer tools, a staff token only the four catalog tools and the two staff tools, and an ops token only the two ops tools (plus core's built-in `log` tool, which appears in development mode only)
+  - the customer token can't see or call the staff tools, and the staff token calls `appointment_requests`
   - `request_appointment` without a subject returns `not_signed_in`, and with one creates a draft owned by that subject
   - `my_appointments` never returns another subject's data
   - `pending_confirmations` ignores drafts

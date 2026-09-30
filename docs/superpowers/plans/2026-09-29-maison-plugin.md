@@ -2,7 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn this repo into the `maison` Strapi 5 plugin: six content types for a fictional luxury house, eight MCP tools and one MCP prompt on Strapi's built-in `/mcp`, permission actions, seed data, and an admin page to load or reset the demo.
+**Goal:** Turn this repo into the `maison` Strapi 5 plugin. It has:
+- six content types for a fictional luxury house
+- ten MCP tools and one MCP prompt on Strapi's built-in `/mcp`
+- the same tools for the in-admin chat of `strapi-plugin-tanstack-ai`
+- permission actions and seed data
+- a Maison admin page with a live board of appointment requests and the demo data buttons
 
 **Architecture:** The plugin separates pure domain logic (`server/src/domain/`, unit-tested with vitest) from Strapi-facing services (`server/src/services/`, which use the Document Service). MCP tools (`server/src/mcp/tools/`) are thin adapters:
 - they validate input with zod from `@strapi/utils`
@@ -10,9 +15,11 @@
 - they call one service method
 - they return either a structured result or an `isError` result with a code and hint
 
+The same services serve four surfaces: the MCP tools, the in-admin chat (an `ai-tools` service that wraps the MCP tool definitions, Task 11c), the Maison admin page (admin routes, Task 12) and the Content Manager.
+
 Service integration tests boot LaunchPad's Strapi programmatically against a separate SQLite file. MCP smoke tests call `/mcp` on the running LaunchPad dev server with the plugin linked through yalc. The full LINE-session end-to-end test lives in the LaunchPad plan.
 
-**Tech stack:** Strapi 5.55.1, `@strapi/sdk-plugin` 6.1.1, TypeScript, zod 3 (from `@strapi/utils`), vitest, Node's built-in `node:test` for integration scripts, `sharp` for generated seed images.
+**Tech stack:** Strapi 5.55.1, `@strapi/sdk-plugin` 6.1.1, TypeScript, zod 4 (4.4.3, from `@strapi/utils`), vitest, Node's built-in `node:test` for integration scripts, `sharp` for generated seed images.
 
 **Spec:** `docs/superpowers/specs/2026-09-29-maison-plugin-design.md` (with the overview `2026-09-29-ax-luxury-demo-overview.md`)
 
@@ -35,7 +42,8 @@ Service integration tests boot LaunchPad's Strapi programmatically against a sep
 - `status` is a reserved attribute name in Strapi 5, so the notification's delivery field is `outcome`. Tool inputs and outputs still say `status`.
 - Reads return **published** content only. `locale` is `ja` or `en`, defaulting to `config.defaultLocale` (`ja`).
 - The default timezone is `Asia/Tokyo`. Opening hours are `opens <= start < closes` in that timezone.
-- `request_appointment` creates drafts only. Nothing a token-holder calls can publish.
+- `request_appointment` creates drafts only. Only staff publish, in three ways: `confirm_appointment` (a token or admin role holding `appointments.confirm`), the board's Confirm button, and Publish in the Content Manager. Customer and ops tokens can never publish.
+- Staff views never show a customer's full LINE subject (`maskSubject`), and never read a label from a draft.
 - No real brand names, product names or photos anywhere, including the seed data.
 - Work on a feature branch. A hook blocks commits on `main`.
 
@@ -48,6 +56,7 @@ These are the inputs the spec implies most likely to bite a real user. Each has 
 3. **Identity that isn't clean.** A `resolveSubject` result with uppercase hex or no `line:` prefix, an `Authorization` header that arrives as an array, a plain admin token, or oauth-mcp-manager not being installed must all be treated as not signed in, never as a customer (Tasks 2 and 7).
 4. **A product with no English localization.** An `en` read falls back to the `ja` version and reports `locale: "ja"`. It doesn't return `not_found` (Task 9).
 5. **Draft-only products leaking.** `search_products` must never return a product that was never published, and `view_product` on it returns `not_found` (Task 9).
+6. **Staff views leaking a customer or a draft.** `appointment_requests` and the board show the customer masked, never the full subject. They take boutique and product names from published versions only, even after a draft edit (Task 11b).
 
 ---
 
@@ -62,10 +71,10 @@ server/src/register.ts                         rewrite: document middleware + MC
 server/src/bootstrap.ts                        rewrite: permission actions
 server/src/destroy.ts                          keep
 server/src/config/index.ts                     rewrite: defaults + validator
-server/src/domain/subject.ts                   create: identity header parsing
+server/src/domain/subject.ts                   create: identity header parsing, customer masking (Task 11b)
 server/src/domain/tool-result.ts               create: success/error result builders
 server/src/domain/hours.ts                     create: opening-hours validation and checks
-server/src/domain/time.ts                      create: Japanese date formatting
+server/src/domain/time.ts                      create: Japanese date formatting, zoned ISO times, calendar-day ranges
 server/src/domain/text.ts                      create: blocks → plain text, teaser
 server/src/domain/reference.ts                 create: APT-#### generator
 server/src/domain/flex-message.ts              create: LINE flex bubble builder
@@ -80,26 +89,30 @@ server/src/services/index.ts                   rewrite
 server/src/services/identity.ts                create
 server/src/services/errors.ts                  create
 server/src/services/catalog.ts                 create
-server/src/services/appointments.ts            create
+server/src/services/appointments.ts            create: customer requests; staff review and confirmation (Task 11b)
 server/src/services/confirmations.ts           create
 server/src/services/seed.ts                    create
+server/src/services/ai-tools.ts                create: chat tools for strapi-plugin-tanstack-ai, from the MCP tools
 server/src/mcp/index.ts                        rewrite: registers enabled tools + prompt
 server/src/mcp/define.ts                       create: typed defineTool / definePrompt
 server/src/mcp/common.ts                       create: shared not_signed_in error
 server/src/mcp/schemas.ts                      rewrite: shared zod schemas
-server/src/mcp/tools/<tool>.ts                 create (8 files)
+server/src/mcp/tools/<tool>.ts                 create (10 files)
 server/src/mcp/prompts/send-pending-confirmations.ts   create
-server/src/routes/index.ts                     rewrite: admin routes for seed/reset
+server/src/routes/index.ts                     rewrite: admin routes for the requests board, seed and reset
 server/src/controllers/index.ts                rewrite
 server/src/controllers/demo.ts                 create
+server/src/controllers/appointments.ts         create: the requests board's list and confirm
 server/seed/content.json                       create: bilingual demo content
 server/seed/images/*.png                       create: generated placeholder images
 server/seed/images/SOURCES.md                  create
 scripts/generate-seed-images.mjs               create
 admin/src/index.ts                             rewrite
 admin/src/pluginId.ts                          create
-admin/src/permissions.ts                       rewrite: demo.manage
-admin/src/pages/DemoPage.tsx                   create
+admin/src/permissions.ts                       rewrite: page, board and demo permissions
+admin/src/pages/MaisonPage.tsx                 create: requests board and demo data
+admin/src/components/RequestsBoard.tsx         create
+admin/src/components/DemoData.tsx              create
 test/unit/*.test.ts                            create
 test/integration/*.test.mjs                    create
 test/fixtures/line-flex-message-schema.mjs     create: vendored LINE Bot MCP schema (tests only)
@@ -4488,35 +4501,1523 @@ git commit -m "feat: add LINE confirmation tools and the send_pending_confirmati
 
 ---
 
-### Task 12: Admin page to load and reset the demo
+### Task 11b: Staff review and confirmation, and the two staff tools
+
+Staff need to see the requests customers made and confirm them from anywhere, not only in the Content Manager. This task adds the service methods behind every staff surface and exposes them as two MCP tools. The chat (Task 11c) and the admin page (Task 12) reuse them.
 
 **Files:**
-- Create: `admin/src/permissions.ts`, `admin/src/pages/DemoPage.tsx`
-- Modify: `admin/src/index.ts`
+- Modify: `server/src/constants.ts`, `server/src/bootstrap.ts`, `server/src/domain/subject.ts`, `server/src/domain/time.ts`, `server/src/mcp/schemas.ts`, `server/src/mcp/tools/record-confirmation.ts`, `server/src/mcp/index.ts`, `server/src/services/appointments.ts`
+- Create: `server/src/mcp/tools/appointment-requests.ts`, `server/src/mcp/tools/confirm-appointment.ts`
+- Test: `test/unit/subject.test.ts`, `test/unit/time.test.ts`, `test/unit/staff-tools.test.ts` (new), `test/unit/constants.test.ts`, `test/unit/register-mcp.test.ts`, `test/integration/staff-appointments.test.mjs` (new), `test/integration/permissions.test.mjs`
 
 **Interfaces:**
-- Consumes: admin routes `POST /maison/demo/seed` and `POST /maison/demo/reset` (Task 8), which return `{ created, collections, products, boutiques, stockLevels }` and `{ appointments, notifications }`
-- Produces: a "Maison" menu entry visible to admins who hold `plugin::maison.demo.manage`
+- Consumes:
+  - `parseSubject` (Task 2), `toolError`, `toolSuccess` (Task 2)
+  - `defineTool`, `registerMcp`, `fakeStrapi` (Task 7)
+  - `slugInput`, `isoDateInput`, `localeInput` (Task 9)
+  - `toZonedIso`, `failure`, `ServiceResult`, and the appointments service's private helpers `publishedBySlug`, `confirmedIds`, `sentReferences` and `labels` (Task 10)
+- Produces:
+  - `ACTION.appointmentsReview` (`plugin::maison.appointments.review`) and `ACTION.appointmentsConfirm` (`plugin::maison.appointments.confirm`), registered in bootstrap; `TOOL_NAMES` gains `appointment_requests` and `confirm_appointment`
+  - `maskSubject(value: unknown): string`, e.g. `line:U4af…88`, or `unknown`
+  - `zonedDayRange(isoDate: string, timeZone: string): { start: Date; end: Date }`
+  - `referenceInput`, `appointmentRequestsInput` and `staffAppointmentOutput` in `server/src/mcp/schemas.ts`
+  - `interface StaffAppointmentView { reference; status: 'requested' | 'confirmed'; customer; boutique: { slug; name } | null; requestedFor; products: { slug; name }[]; note; createdVia: 'concierge' | 'app'; confirmationSent; createdAt }`
+  - service `appointments.listRequests(filters: RequestFilters = {}): Promise<ServiceResult<StaffAppointmentView[]>>`, where `RequestFilters = { status?: 'requested' | 'confirmed' | 'all'; boutique?: string; date?: string; limit?: number; locale?: Locale; now?: Date }`
+  - service `appointments.confirm(reference: string, now = new Date()): Promise<ServiceResult<{ appointment: StaffAppointmentView; alreadyConfirmed: boolean }>>`
+  - tools `appointment_requests` (gated on `appointments.review`) and `confirm_appointment` (gated on `appointments.confirm`)
 
-Plugin admin routes are served at `/<plugin id>/<path>`, not under `/admin`. `useFetchClient` adds the backend URL and the admin session.
+**Why the appointments service, not a new `staff` service.** Both methods need the service's private helpers: `publishedBySlug`, `confirmedIds`, `sentReferences` and the published-only `labels`. They also rest on its rule that publishing an appointment confirms it. A separate service would have to export those helpers or copy them.
 
-- [ ] **Step 1: Create `admin/src/permissions.ts`**
+**The rules:**
+- **Status.** `requested` (the default) lists what staff can still confirm: no published version yet, and the visit hasn't started. A request whose visit has started drops out of it, because `confirm` would refuse it with `in_the_past`. `confirmed` lists appointments that have a published version. `all` lists everything, including unconfirmed requests whose time has passed.
+- **Sort.** `requested` comes soonest visit first (`requestedFor:asc`), so the next visit to confirm is on top. `confirmed` and `all` come newest request first (`createdAt:desc`), as `my_appointments` does, so a new request lands on top of the board.
+- **`date`** is a calendar day in the configured timezone. It becomes the UTC range `[start, end)` from `zonedDayRange`, so 10 October in Tokyo runs from 15:00 UTC on 9 October.
+- **Labels are published only.** `toViews` (Task 10) falls back to the draft's populated `slug` and `name` when a label is missing, and the Task 10 review flagged that. The staff view doesn't copy it. Its populate (`STAFF_POPULATE`) fetches only `documentId`, and names come from `labels`, which reads published versions. A boutique with no published version shows as `null`, and a product with none is left out.
+- **The customer is masked** by `maskSubject`: `line:U`, then three characters, `…` and the last two, so `line:U4af…88`. The full subject never leaves the service. Anything that isn't a valid subject shows as `unknown`.
+- **Times** (`requestedFor`, `createdAt`) are ISO 8601 in the configured timezone, via `toZonedIso`.
+- **`now`** is injectable only for tests, as `request()` does. `listRequests` takes it in `filters`, and `confirm` takes it as its second argument.
+- **`confirm` sends nothing.** It publishes the draft with the Document Service, the same thing Publish in the Content Manager does, and a second call returns `alreadyConfirmed: true`. The ops agent sends the LINE confirmation later.
+
+**Two schema changes.** `referenceInput` moves the `APT-` pattern from `record_confirmation` into `schemas.ts`, so both tools use one pattern. The message is unchanged, so `confirmation-tools.test.ts` doesn't change. `appointmentRequestsInput` is shared by the tool, the chat and the board's admin route (Task 12). It adds `locale` to the filters, because the tool contract says every read takes `locale`.
+
+- [ ] **Step 1: Write the failing domain tests**
+
+In `test/unit/subject.test.ts`, add `maskSubject` to the import from `../../server/src/domain/subject`, then append:
 
 ```ts
-export const PERMISSIONS = {
-  manage: [{ action: 'plugin::maison.demo.manage', subject: null }],
+describe('maskSubject', () => {
+  it('keeps the prefix, three characters and the last two', () => {
+    expect(maskSubject(VALID)).toBe('line:U4af…88');
+  });
+
+  it('never contains the LINE user ID', () => {
+    expect(maskSubject(VALID)).not.toContain(lineUserIdOf(VALID));
+  });
+
+  it.each([
+    ['uppercase hex', 'line:U4AF4980629C1A7B3F1E2D3C4B5A69788'],
+    ['surrounding spaces', ` ${VALID} `],
+    ['empty', ''],
+    ['null', null],
+  ])('returns "unknown" for %s', (_label, value) => {
+    expect(maskSubject(value)).toBe('unknown');
+  });
+});
+```
+
+In `test/unit/time.test.ts`, add `zonedDayRange` to the import from `../../server/src/domain/time`, then append:
+
+```ts
+describe('zonedDayRange', () => {
+  const range = (isoDate: string, timeZone: string) => {
+    const { start, end } = zonedDayRange(isoDate, timeZone);
+    return [start.toISOString(), end.toISOString()];
+  };
+
+  it('starts a Tokyo day at 15:00 UTC the day before', () => {
+    expect(range('2026-10-10', 'Asia/Tokyo')).toEqual(['2026-10-09T15:00:00.000Z', '2026-10-10T15:00:00.000Z']);
+  });
+
+  it('crosses month ends', () => {
+    expect(range('2026-10-31', 'Asia/Tokyo')).toEqual(['2026-10-30T15:00:00.000Z', '2026-10-31T15:00:00.000Z']);
+  });
+
+  it('gives a 23-hour day when daylight saving time starts', () => {
+    expect(range('2026-03-08', 'America/New_York')).toEqual(['2026-03-08T05:00:00.000Z', '2026-03-09T04:00:00.000Z']);
+  });
+});
+```
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `npx vitest run test/unit/subject.test.ts test/unit/time.test.ts`
+Expected: FAIL with "maskSubject is not a function" and "zonedDayRange is not a function" (or a missing export).
+
+- [ ] **Step 3: Implement `maskSubject` and `zonedDayRange`**
+
+Append to `server/src/domain/subject.ts`:
+
+```ts
+/** A customer as staff see them, e.g. `line:U4af…88`. Never the full subject; anything that isn't one is "unknown". */
+export const maskSubject = (value: unknown): string => {
+  const subject = parseSubject(value);
+  return subject ? `${subject.slice(0, 'line:U'.length + 3)}…${subject.slice(-2)}` : 'unknown';
 };
 ```
 
-- [ ] **Step 2: Create `admin/src/pages/DemoPage.tsx`**
+Append to `server/src/domain/time.ts`:
+
+```ts
+/** UTC offset in minutes of `timeZone` at `date`, e.g. 540 for Tokyo. */
+const offsetMinutes = (date: Date, timeZone: string): number => {
+  const [, sign, hours, minutes] = /([+-])(\d{2}):(\d{2})$/.exec(toZonedIso(date, timeZone)) as RegExpExecArray;
+  return (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes));
+};
+
+/** The instant a calendar day (YYYY-MM-DD) starts in `timeZone`. The second pass corrects for a DST change that night. */
+const startOfDay = (isoDate: string, timeZone: string): Date => {
+  const utcMidnight = Date.parse(`${isoDate}T00:00:00Z`);
+  const guess = utcMidnight - offsetMinutes(new Date(utcMidnight), timeZone) * 60_000;
+  return new Date(utcMidnight - offsetMinutes(new Date(guess), timeZone) * 60_000);
+};
+
+/** [start, end) of a calendar day in `timeZone`, for "visits on this day" filters. */
+export function zonedDayRange(isoDate: string, timeZone: string): { start: Date; end: Date } {
+  const next = new Date(`${isoDate}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { start: startOfDay(isoDate, timeZone), end: startOfDay(next.toISOString().slice(0, 10), timeZone) };
+}
+```
+
+Run: `npx vitest run test/unit/subject.test.ts test/unit/time.test.ts`
+Expected: PASS.
+
+- [ ] **Step 4: Write the failing tool and registry tests**
+
+`test/unit/staff-tools.test.ts`:
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+import { appointmentRequestsTool } from '../../server/src/mcp/tools/appointment-requests';
+import { confirmAppointmentTool } from '../../server/src/mcp/tools/confirm-appointment';
+import { fakeStrapi } from './fake-strapi';
+
+const context = { userAbility: {} as any, user: { id: 1 } };
+const errorOf = (result: any) => JSON.parse(result.content[0].text).error;
+const withAppointments = (appointments: Record<string, unknown>) => fakeStrapi({ services: { appointments } });
+
+const staffView = {
+  reference: 'APT-4821',
+  status: 'requested',
+  customer: 'line:U4af…88',
+  boutique: { slug: 'ginza', name: '銀座本店' },
+  requestedFor: '2026-10-10T14:00:00+09:00',
+  products: [{ slug: 'weekender-50', name: 'ウィークエンダー 50' }],
+  note: 'A gift for a friend who travels',
+  createdVia: 'concierge',
+  confirmationSent: false,
+  createdAt: '2026-10-01T09:00:00+09:00',
+};
+
+describe('appointment_requests', () => {
+  it('is gated on appointments.review and passes the filters through', async () => {
+    expect(appointmentRequestsTool.auth.policies).toEqual([{ action: 'plugin::maison.appointments.review' }]);
+    const listRequests = vi.fn(async () => ({ ok: true, value: [staffView, { ...staffView, reference: 'APT-4822', boutique: null }] }));
+    const args = { status: 'all', boutique: 'ginza', date: '2026-10-10', limit: 5, locale: 'en' };
+    const result = await appointmentRequestsTool.createHandler(withAppointments({ listRequests }), context)({ args, extra: {} });
+    expect(listRequests).toHaveBeenCalledWith(args);
+    expect(appointmentRequestsTool.resolveOutputSchema(context).parse(result.structuredContent)).toEqual({
+      appointments: [staffView, { ...staffView, reference: 'APT-4822', boutique: null }],
+    });
+  });
+
+  it('turns an unknown boutique into not_found', async () => {
+    const failure = { ok: false, code: 'not_found', message: 'No boutique "kyoto".', hint: 'Call find_boutiques to find valid boutique slugs.' };
+    const listRequests = vi.fn(async () => failure);
+    const result = await appointmentRequestsTool.createHandler(withAppointments({ listRequests }), context)({ args: { boutique: 'kyoto' }, extra: {} });
+    expect(result.isError).toBe(true);
+    expect(errorOf(result)).toEqual({ code: 'not_found', message: failure.message, hint: failure.hint });
+  });
+
+  it('validates status, date and limit', () => {
+    const input = appointmentRequestsTool.resolveInputSchema!(context);
+    expect(input.safeParse({}).success).toBe(true);
+    expect(input.safeParse({ status: 'confirmed', limit: 50 }).success).toBe(true);
+    expect(input.safeParse({ status: 'pending' }).success).toBe(false);
+    expect(input.safeParse({ date: '2026-10-1' }).success).toBe(false);
+    expect(input.safeParse({ limit: 0 }).success).toBe(false);
+    expect(input.safeParse({ limit: 51 }).success).toBe(false);
+  });
+});
+
+describe('confirm_appointment', () => {
+  it('is gated on appointments.confirm and says it sends nothing', () => {
+    expect(confirmAppointmentTool.auth.policies).toEqual([{ action: 'plugin::maison.appointments.confirm' }]);
+    expect(confirmAppointmentTool.description).toMatch(/This tool sends nothing/);
+    expect(confirmAppointmentTool.description).toMatch(/LINE ops agent/);
+  });
+
+  it('confirms by reference and returns schema-valid output', async () => {
+    const value = { appointment: { ...staffView, status: 'confirmed' }, alreadyConfirmed: false };
+    const confirm = vi.fn(async () => ({ ok: true, value }));
+    const result = await confirmAppointmentTool.createHandler(withAppointments({ confirm }), context)({ args: { reference: 'APT-4821' }, extra: {} });
+    expect(confirm).toHaveBeenCalledWith('APT-4821');
+    expect(confirmAppointmentTool.resolveOutputSchema(context).parse(result.structuredContent)).toEqual(value);
+  });
+
+  it.each([
+    ['not_found', 'No appointment APT-0000.', 'Use a reference from appointment_requests.'],
+    ['in_the_past', 'The visit on 2026-10-02T14:00:00+09:00 has already started.', 'Ask the customer to request a new time.'],
+  ])('turns %s into a tool error with the same message and hint', async (code, message, hint) => {
+    const confirm = vi.fn(async () => ({ ok: false, code, message, hint }));
+    const result = await confirmAppointmentTool.createHandler(withAppointments({ confirm }), context)({ args: { reference: 'APT-0000' }, extra: {} });
+    expect(result.isError).toBe(true);
+    expect(errorOf(result)).toEqual({ code, message, hint });
+  });
+
+  it('validates the reference', () => {
+    const input = confirmAppointmentTool.resolveInputSchema!(context);
+    expect(input.safeParse({ reference: 'APT-4821' }).success).toBe(true);
+    expect(input.safeParse({ reference: 'apt-4821' }).success).toBe(false);
+    expect(input.safeParse({}).success).toBe(false);
+  });
+});
+```
+
+In `test/unit/constants.test.ts`, replace the "eight tools" case with these two:
+
+```ts
+  it('declares the ten tools exactly once each', () => {
+    expect(TOOL_NAMES).toHaveLength(10);
+    expect(new Set(TOOL_NAMES).size).toBe(10);
+  });
+
+  it('declares the staff actions', () => {
+    expect(ACTION.appointmentsReview).toBe('plugin::maison.appointments.review');
+    expect(ACTION.appointmentsConfirm).toBe('plugin::maison.appointments.confirm');
+  });
+```
+
+In `test/unit/register-mcp.test.ts`, the registration case now expects the staff tools after `my_appointments`:
+
+```ts
+    expect(names).toEqual([
+      'browse_collections', 'search_products', 'view_product',
+      'request_appointment', 'my_appointments', 'appointment_requests', 'confirm_appointment',
+      'pending_confirmations', 'record_confirmation',
+    ]);
+```
+
+- [ ] **Step 5: Run them to verify they fail**
+
+Run: `npx vitest run test/unit/staff-tools.test.ts test/unit/constants.test.ts test/unit/register-mcp.test.ts`
+Expected: FAIL. `staff-tools` fails with "Failed to resolve import ../../server/src/mcp/tools/appointment-requests". The constants test still counts 8 tools and finds no staff actions, and the registration list lacks the staff tools.
+
+- [ ] **Step 6: Add the actions and tool names**
+
+In `server/src/constants.ts`, `ACTION` and `TOOL_NAMES` become:
+
+```ts
+/** Full action UIDs, as stored on admin tokens and checked by tool auth policies. */
+export const ACTION = {
+  catalogRead: 'plugin::maison.catalog.read',
+  appointmentsRequest: 'plugin::maison.appointments.request',
+  appointmentsReview: 'plugin::maison.appointments.review',
+  appointmentsConfirm: 'plugin::maison.appointments.confirm',
+  confirmationsSend: 'plugin::maison.confirmations.send',
+  demoManage: 'plugin::maison.demo.manage',
+} as const;
+
+export const TOOL_NAMES = [
+  'browse_collections',
+  'search_products',
+  'view_product',
+  'find_boutiques',
+  'request_appointment',
+  'my_appointments',
+  'appointment_requests',
+  'confirm_appointment',
+  'pending_confirmations',
+  'record_confirmation',
+] as const;
+export type ToolName = (typeof TOOL_NAMES)[number];
+```
+
+In `server/src/bootstrap.ts`, `ACTIONS` becomes:
+
+```ts
+const ACTIONS = [
+  { uid: 'catalog.read', displayName: 'MCP: browse the catalog', subCategory: 'mcp' },
+  { uid: 'appointments.request', displayName: 'MCP: request and view own appointments', subCategory: 'mcp' },
+  { uid: 'appointments.review', displayName: 'MCP: review appointment requests', subCategory: 'mcp' },
+  { uid: 'appointments.confirm', displayName: 'MCP: confirm appointment requests', subCategory: 'mcp' },
+  { uid: 'confirmations.send', displayName: 'MCP: send appointment confirmations', subCategory: 'mcp' },
+  { uid: 'demo.manage', displayName: 'Load and reset demo data', subCategory: 'demo' },
+];
+```
+
+- [ ] **Step 7: Add the shared staff schemas**
+
+Append to `server/src/mcp/schemas.ts`:
+
+```ts
+/** An appointment reference such as APT-4821 (see domain/reference.ts). */
+export const referenceInput = z.string().regex(/^APT-\d{4}$/, 'Use a reference like APT-4821.');
+
+/** Staff filters for appointments. The appointment_requests tool, the chat and the admin board all use these. */
+export const appointmentRequestsInput = z.object({
+  status: z
+    .enum(['requested', 'confirmed', 'all'])
+    .optional()
+    .describe('"requested" (default): waiting for staff, with the visit still ahead. "confirmed": confirmed by staff. "all": every request.'),
+  boutique: slugInput.optional().describe('Only this boutique, by slug from find_boutiques.'),
+  date: isoDateInput.optional().describe("Only visits on this calendar day (YYYY-MM-DD) in the boutique's time zone."),
+  limit: z.number().int().min(1).max(50).optional().describe('Maximum appointments, default 20.'),
+  locale: localeInput,
+});
+
+/** An appointment as staff see it. The customer is masked, and labels come from published versions only. */
+export const staffAppointmentOutput = z.object({
+  reference: z.string(),
+  status: z.enum(['requested', 'confirmed']).describe('"confirmed" once staff have confirmed it.'),
+  customer: z.string().describe('The LINE customer, masked like line:U4af…88. The full ID is never shown.'),
+  boutique: z.object({ slug: z.string(), name: z.string() }).nullable().describe('null if the boutique is no longer published.'),
+  requestedFor: z.string().describe("Visit start in the boutique's time zone, ISO 8601 with offset."),
+  products: z.array(z.object({ slug: z.string(), name: z.string() })).describe('The published products the customer wants to see.'),
+  note: z.string().describe("The customer's own words for the boutique."),
+  createdVia: z.enum(['concierge', 'app']).describe('"concierge" when the AI concierge made the request, "app" for the app screens.'),
+  confirmationSent: z.boolean().describe('Whether the LINE confirmation has been delivered.'),
+  createdAt: z.string().describe('When the request was made, ISO 8601 with offset.'),
+});
+```
+
+In `server/src/mcp/tools/record-confirmation.ts`, add `import { referenceInput } from '../schemas';` after the `defineTool` import. Then replace its inline reference schema with:
+
+```ts
+      reference: referenceInput,
+```
+
+- [ ] **Step 8: Implement the two tools and register them**
+
+`server/src/mcp/tools/appointment-requests.ts`:
+
+```ts
+import { z } from '@strapi/utils';
+
+import { ACTION } from '../../constants';
+import { toolError, toolSuccess } from '../../domain/tool-result';
+import { defineTool } from '../define';
+import { appointmentRequestsInput, staffAppointmentOutput } from '../schemas';
+
+export const appointmentRequestsTool = defineTool({
+  name: 'appointment_requests',
+  title: 'Review appointment requests',
+  description:
+    "Lists customers' boutique appointment requests for staff. By default it shows the requests waiting for staff, soonest visit first; confirmed or all requests come newest first. Filter by boutique slug or visit date. Customers are masked. It changes nothing: confirm a request with confirm_appointment.",
+  auth: { policies: [{ action: ACTION.appointmentsReview }] },
+  resolveInputSchema: () => appointmentRequestsInput,
+  resolveOutputSchema: () => z.object({ appointments: z.array(staffAppointmentOutput) }),
+  createHandler: (strapi) => async ({ args }) => {
+    const result = await strapi.plugin('maison').service('appointments').listRequests(args);
+    if (!result.ok) return toolError(result.code, result.message, result.hint);
+    return toolSuccess({ appointments: result.value });
+  },
+});
+```
+
+`server/src/mcp/tools/confirm-appointment.ts`:
+
+```ts
+import { z } from '@strapi/utils';
+
+import { ACTION } from '../../constants';
+import { toolError, toolSuccess } from '../../domain/tool-result';
+import { defineTool } from '../define';
+import { referenceInput, staffAppointmentOutput } from '../schemas';
+
+export const confirmAppointmentTool = defineTool({
+  name: 'confirm_appointment',
+  title: 'Confirm an appointment request',
+  description:
+    "Confirms a customer's appointment request for the boutique, the same as publishing it in the admin. This tool sends nothing: the customer is messaged separately, when the LINE ops agent delivers the confirmation. Confirming twice is safe and returns alreadyConfirmed true. A visit whose time has passed can't be confirmed.",
+  auth: { policies: [{ action: ACTION.appointmentsConfirm }] },
+  resolveInputSchema: () => z.object({ reference: referenceInput.describe('Reference from appointment_requests, e.g. APT-4821.') }),
+  resolveOutputSchema: () =>
+    z.object({
+      appointment: staffAppointmentOutput,
+      alreadyConfirmed: z.boolean().describe('true if staff had already confirmed it; nothing changed.'),
+    }),
+  createHandler: (strapi) => async ({ args }) => {
+    const result = await strapi.plugin('maison').service('appointments').confirm(args.reference);
+    if (!result.ok) return toolError(result.code, result.message, result.hint);
+    return toolSuccess(result.value);
+  },
+});
+```
+
+In `server/src/mcp/index.ts`, add the imports, then the two registration lines after `my_appointments`:
+
+```ts
+import { appointmentRequestsTool } from './tools/appointment-requests';
+import { confirmAppointmentTool } from './tools/confirm-appointment';
+```
+
+```ts
+  if (enabled('appointment_requests')) mcp.registerTool(appointmentRequestsTool);
+  if (enabled('confirm_appointment')) mcp.registerTool(confirmAppointmentTool);
+```
+
+The registration order becomes `browse_collections`, `search_products`, `view_product`, `find_boutiques`, `request_appointment`, `my_appointments`, `appointment_requests`, `confirm_appointment`, `pending_confirmations`, `record_confirmation`. The prompt condition doesn't change, because it depends only on the two ops tools.
+
+- [ ] **Step 9: Run the unit tests and type checks**
+
+Run: `npx vitest run && npm run test:ts:back`
+Expected: all pass, and tsc exits 0. The name rule in `register-mcp.test.ts` passes too, because neither new name starts with a prefix Strapi generates.
+
+- [ ] **Step 10: Write the failing integration tests**
+
+`NOW` is fixed, and `listRequests` and `confirm` receive it, so the tests keep passing after the demo dates go by.
+
+`test/integration/staff-appointments.test.mjs`:
+
+```js
+import assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
+
+import { SUBJECT_A, SUBJECT_B, bootStrapi } from './harness.mjs';
+
+const NOW = new Date('2026-10-01T00:00:00Z'); // 09:00 on Thursday 1 October in Tokyo
+const APPOINTMENT = 'plugin::maison.appointment';
+
+describe('staff review and confirmation', () => {
+  let strapi;
+  let appointments;
+  const refs = {};
+  /** Creates a request as a customer would. The pause keeps createdAt distinct, so "newest first" is stable. */
+  const request = async (key, overrides) => {
+    const result = await appointments.request({
+      subject: SUBJECT_A, boutique: 'ginza', productSlugs: ['weekender-50'], createdVia: 'app', now: NOW, ...overrides,
+    });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    refs[key] = result.value.reference;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  };
+  const list = (filters = {}) => appointments.listRequests({ now: NOW, ...filters });
+  const references = async (filters) => (await list(filters)).value.map((a) => a.reference);
+
+  before(async () => {
+    strapi = await bootStrapi('staff');
+    await strapi.plugin('maison').service('seed').loadDemoCatalog();
+    appointments = strapi.plugin('maison').service('appointments');
+    // Created in this order, so newest first is: late, soon, other.
+    await request('other', {
+      subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: '2026-10-11T15:00:00+09:00',
+      createdVia: 'concierge', note: 'For my sister',
+    });
+    await request('soon', { requestedFor: '2026-10-02T14:00:00+09:00' });
+    await request('late', { requestedFor: '2026-10-10T14:00:00+09:00', productSlugs: ['weekender-50', 'passport-cover'] });
+  });
+
+  after(async () => {
+    await strapi?.destroy();
+  });
+
+  it('lists requests waiting for staff, soonest visit first, with the customer masked', async () => {
+    const result = await list();
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.value.map((a) => a.reference), [refs.soon, refs.late, refs.other]);
+    const [soon] = result.value;
+    assert.equal(soon.status, 'requested');
+    assert.equal(soon.customer, 'line:Uaaa…aa');
+    assert.deepEqual(soon.boutique, { slug: 'ginza', name: '銀座本店' });
+    assert.equal(soon.requestedFor, '2026-10-02T14:00:00+09:00');
+    assert.deepEqual(soon.products, [{ slug: 'weekender-50', name: 'ウィークエンダー 50' }]);
+    assert.equal(soon.createdVia, 'app');
+    assert.equal(soon.confirmationSent, false);
+    assert.match(soon.createdAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/);
+    assert.ok(!JSON.stringify(result.value).includes(SUBJECT_A.slice('line:'.length)), 'never the LINE user ID');
+  });
+
+  it('filters by boutique, visit day and limit, and names follow the locale', async () => {
+    assert.deepEqual(await references({ boutique: 'omotesando' }), [refs.other]);
+    assert.deepEqual(await references({ date: '2026-10-10' }), [refs.late]);
+    assert.deepEqual(await references({ limit: 1 }), [refs.soon]);
+    assert.equal((await list({ boutique: 'kyoto' })).code, 'not_found');
+
+    const [other] = (await list({ boutique: 'omotesando', locale: 'en' })).value;
+    assert.equal(other.customer, 'line:Ubbb…bb');
+    assert.deepEqual(other.boutique, { slug: 'omotesando', name: 'Omotesando' });
+    assert.deepEqual(other.products, [{ slug: 'passport-cover', name: 'Passport Cover' }]);
+    assert.equal(other.createdVia, 'concierge');
+    assert.equal(other.note, 'For my sister');
+  });
+
+  it('confirms by publishing, and confirming again changes nothing', async () => {
+    const first = await appointments.confirm(refs.late, NOW);
+    assert.equal(first.ok, true);
+    assert.equal(first.value.alreadyConfirmed, false);
+    assert.equal(first.value.appointment.reference, refs.late);
+    assert.equal(first.value.appointment.status, 'confirmed');
+    assert.equal(await strapi.documents(APPOINTMENT).count({ status: 'published', filters: { reference: refs.late } }), 1);
+
+    const again = await appointments.confirm(refs.late, NOW);
+    assert.equal(again.value.alreadyConfirmed, true);
+    assert.equal(again.value.appointment.status, 'confirmed');
+
+    assert.deepEqual(await references(), [refs.soon, refs.other]);
+    assert.deepEqual(await references({ status: 'confirmed' }), [refs.late]);
+  });
+
+  it('refuses unknown references and visits that have started, and publishes nothing', async () => {
+    assert.equal((await appointments.confirm('APT-0000', NOW)).code, 'not_found');
+
+    const later = new Date('2026-10-02T06:00:00Z'); // 15:00 on 2 October in Tokyo, an hour after the visit
+    const past = await appointments.confirm(refs.soon, later);
+    assert.equal(past.code, 'in_the_past');
+    assert.match(past.message, /2026-10-02T14:00:00\+09:00/);
+    assert.equal(await strapi.documents(APPOINTMENT).count({ status: 'published', filters: { reference: refs.soon } }), 0);
+
+    assert.deepEqual(await references({ now: later }), [refs.other], 'a request whose time has passed no longer waits for staff');
+    assert.ok((await references({ status: 'all', now: later })).includes(refs.soon), 'it is still listed under all');
+  });
+
+  it('lists all requests newest first, with the LINE confirmation state', async () => {
+    const sent = await strapi.plugin('maison').service('confirmations').record({ reference: refs.late, status: 'sent', detail: 'ok' });
+    assert.equal(sent.ok, true);
+
+    const all = (await list({ status: 'all' })).value;
+    assert.deepEqual(all.map((a) => a.reference), [refs.late, refs.soon, refs.other]);
+    assert.deepEqual(all.map((a) => a.status), ['confirmed', 'requested', 'requested']);
+    assert.deepEqual(all.map((a) => a.confirmationSent), [true, false, false]);
+  });
+
+  // Last: it changes the catalog.
+  it('labels come from published versions, never from draft edits', async () => {
+    const ginza = await strapi.documents('plugin::maison.boutique').findFirst({ locale: 'ja', status: 'draft', filters: { slug: 'ginza' } });
+    await strapi.documents('plugin::maison.boutique').update({ documentId: ginza.documentId, locale: 'ja', data: { name: '銀座本店（改装中の下書き）' } });
+    const cover = await strapi.documents('plugin::maison.product').findFirst({ locale: 'ja', status: 'published', filters: { slug: 'passport-cover' } });
+    await strapi.documents('plugin::maison.product').unpublish({ documentId: cover.documentId, locale: '*' });
+
+    const late = (await list({ status: 'all' })).value.find((a) => a.reference === refs.late);
+    assert.deepEqual(late.boutique, { slug: 'ginza', name: '銀座本店' }, 'the published name, not the draft edit');
+    assert.deepEqual(late.products.map((p) => p.slug), ['weekender-50'], 'an unpublished product is left out');
+  });
+});
+```
+
+The last case changes the catalog, so it runs last, in its own database.
+
+In `test/integration/permissions.test.mjs`, the case becomes:
+
+```js
+  it('registers the six plugin actions', () => {
+    const ids = strapi.service('admin::permission').actionProvider.values().map((action) => action.actionId);
+    for (const id of [
+      'plugin::maison.catalog.read',
+      'plugin::maison.appointments.request',
+      'plugin::maison.appointments.review',
+      'plugin::maison.appointments.confirm',
+      'plugin::maison.confirmations.send',
+      'plugin::maison.demo.manage',
+    ]) {
+      assert.ok(ids.includes(id), `${id} is registered`);
+    }
+  });
+```
+
+- [ ] **Step 11: Run them to verify they fail**
+
+```bash
+npm run link
+STRAPI_APP_DIR=/Users/paul/work/launchpad-fork-latest/strapi npm run test:integration
+```
+
+Expected: the permissions case passes, because Step 6 registered the actions. Every `staff review and confirmation` case fails with a TypeError such as "appointments.listRequests is not a function". The other files pass.
+
+- [ ] **Step 12: Implement `listRequests` and `confirm` in `server/src/services/appointments.ts`**
+
+Replace the `toZonedIso` import with:
+
+```ts
+import { maskSubject } from '../domain/subject';
+import { toZonedIso, zonedDayRange } from '../domain/time';
+```
+
+Add these types after `AppointmentRequest`:
+
+```ts
+/** An appointment as staff see it: the customer masked, labels from published versions only. */
+export interface StaffAppointmentView {
+  reference: string;
+  status: 'requested' | 'confirmed';
+  customer: string;
+  boutique: { slug: string; name: string } | null;
+  requestedFor: string;
+  products: Array<{ slug: string; name: string }>;
+  note: string;
+  createdVia: 'concierge' | 'app';
+  confirmationSent: boolean;
+  createdAt: string;
+}
+
+export interface RequestFilters {
+  status?: 'requested' | 'confirmed' | 'all';
+  boutique?: string;
+  date?: string;
+  limit?: number;
+  locale?: Locale;
+  /** Only for tests. Defaults to the current time. */
+  now?: Date;
+}
+
+export interface ConfirmedAppointment {
+  appointment: StaffAppointmentView;
+  alreadyConfirmed: boolean;
+}
+```
+
+Add this line after `POPULATE`:
+
+```ts
+/** Staff views read only documentIds from the draft's relations; every label comes from a published version. */
+const STAFF_POPULATE = { boutique: { fields: ['documentId'] }, products: { fields: ['documentId'] } };
+```
+
+Add this helper after `confirmedIds`:
+
+```ts
+  /** documentIds of every appointment that has a published version, i.e. that staff confirmed. */
+  const allConfirmedIds = async (): Promise<string[]> => {
+    const rows = await strapi.documents(UID.appointment).findMany({ status: 'published', fields: ['documentId'], limit: 5000 });
+    return rows.map((row) => row.documentId as string);
+  };
+```
+
+Add this after `toViews`. It deliberately doesn't reuse `toViews`, whose draft fallback is the one the Task 10 review flagged:
+
+```ts
+  /** Drafts (populated with STAFF_POPULATE) → what staff see. A label with no published version is left out, never read from a draft. */
+  const toStaffViews = async (docs: Doc[], locale: Locale): Promise<StaffAppointmentView[]> => {
+    const [confirmed, sent, boutiques, products] = await Promise.all([
+      confirmedIds(docs.map((doc) => doc.documentId as string)),
+      sentReferences(docs.map((doc) => doc.reference as string)),
+      labels(UID.boutique, docs.map((doc) => doc.boutique?.documentId).filter(Boolean), locale),
+      labels(UID.product, docs.flatMap((doc) => (doc.products ?? []).map((product: Doc) => product.documentId)), locale),
+    ]);
+    const { timezone } = getConfig(strapi);
+    return docs.map((doc) => ({
+      reference: doc.reference,
+      status: confirmed.has(doc.documentId) ? 'confirmed' : 'requested',
+      customer: maskSubject(doc.customer),
+      boutique: boutiques.get(doc.boutique?.documentId) ?? null,
+      requestedFor: toZonedIso(new Date(doc.requestedFor), timezone),
+      products: ((doc.products ?? []) as Doc[]).flatMap((product) => products.get(product.documentId) ?? []),
+      note: doc.customerNote ?? '',
+      createdVia: doc.createdVia === 'concierge' ? 'concierge' : 'app',
+      confirmationSent: sent.has(doc.reference),
+      createdAt: toZonedIso(new Date(doc.createdAt), timezone),
+    }));
+  };
+```
+
+Add the two methods after `listForCustomer`, inside the returned object:
+
+```ts
+    /**
+     * Appointments for staff. "requested" (the default) lists what staff can still confirm: not confirmed yet, with
+     * the visit ahead, soonest visit first. "confirmed" and "all" list the newest requests first.
+     */
+    async listRequests(filters: RequestFilters = {}): Promise<ServiceResult<StaffAppointmentView[]>> {
+      const { defaultLocale, timezone } = getConfig(strapi);
+      const status = filters.status ?? 'requested';
+      const conditions: Doc[] = [];
+
+      if (filters.boutique) {
+        const boutique = await publishedBySlug(UID.boutique, filters.boutique, defaultLocale);
+        if (!boutique) {
+          return failure('not_found', `No boutique "${filters.boutique}".`, 'Call find_boutiques to find valid boutique slugs.');
+        }
+        conditions.push({ boutique: { documentId: { $eq: boutique.documentId } } });
+      }
+      if (filters.date) {
+        const { start, end } = zonedDayRange(filters.date, timezone);
+        conditions.push({ requestedFor: { $gte: start.toISOString(), $lt: end.toISOString() } });
+      }
+      if (status !== 'all') {
+        const confirmed = await allConfirmedIds();
+        if (status === 'confirmed') {
+          if (confirmed.length === 0) return { ok: true, value: [] };
+          conditions.push({ documentId: { $in: confirmed } });
+        } else {
+          if (confirmed.length > 0) conditions.push({ documentId: { $notIn: confirmed } });
+          conditions.push({ requestedFor: { $gte: (filters.now ?? new Date()).toISOString() } });
+        }
+      }
+
+      const docs = await strapi.documents(UID.appointment).findMany({
+        status: 'draft',
+        filters: conditions.length > 0 ? { $and: conditions } : {},
+        sort: status === 'requested' ? 'requestedFor:asc' : 'createdAt:desc',
+        populate: STAFF_POPULATE,
+        limit: filters.limit ?? 20,
+      });
+      return { ok: true, value: await toStaffViews(docs as Doc[], filters.locale ?? defaultLocale) };
+    },
+
+    /**
+     * Staff confirmation: publishes the draft, the same as Publish in the Content Manager. Confirming twice is safe.
+     * It never messages anyone; the LINE ops agent sends the confirmation afterwards.
+     */
+    async confirm(reference: string, now: Date = new Date()): Promise<ServiceResult<ConfirmedAppointment>> {
+      const { defaultLocale, timezone } = getConfig(strapi);
+      const draft = (await strapi.documents(UID.appointment).findFirst({
+        status: 'draft',
+        filters: { reference: { $eq: reference } },
+        fields: ['documentId', 'requestedFor'],
+      })) as Doc | null;
+      if (!draft) {
+        return failure('not_found', `No appointment ${reference}.`, 'Use a reference from appointment_requests.');
+      }
+
+      const alreadyConfirmed = (await confirmedIds([draft.documentId])).size > 0;
+      if (!alreadyConfirmed) {
+        const when = new Date(draft.requestedFor);
+        if (when.getTime() < now.getTime()) {
+          return failure(
+            'in_the_past',
+            `The visit for ${reference} was at ${toZonedIso(when, timezone)}, which has passed.`,
+            "A past visit can't be confirmed. Ask the customer to request a new time."
+          );
+        }
+        await strapi.documents(UID.appointment).publish({ documentId: draft.documentId });
+      }
+
+      const saved = await strapi.documents(UID.appointment).findOne({ documentId: draft.documentId, status: 'draft', populate: STAFF_POPULATE });
+      const [appointment] = await toStaffViews([saved as Doc], defaultLocale);
+      return { ok: true, value: { appointment, alreadyConfirmed } };
+    },
+```
+
+- [ ] **Step 13: Run all the tests**
+
+```bash
+npx vitest run && npm run test:ts:back
+npm run link
+STRAPI_APP_DIR=/Users/paul/work/launchpad-fork-latest/strapi npm run test:integration
+```
+
+Expected: every unit test passes and tsc exits 0. Every integration file passes, including the 6 staff cases and the six-action permissions case.
+
+- [ ] **Step 14: Commit**
+
+```bash
+git add server/src test/unit test/integration/staff-appointments.test.mjs test/integration/permissions.test.mjs
+git commit -m "feat: add staff review and confirmation of appointment requests"
+```
+
+---
+
+### Task 11c: Chat tools for the in-admin chat
+
+`strapi-plugin-tanstack-ai` 1.6.0 adds an AI chat to the admin panel. It picks up tools from any plugin that exposes a service named `ai-tools`. This task gives Maison that service, built from the same MCP tool definitions so the chat and MCP can't drift. LaunchPad installs and configures the chat plugin in plan 3; Maison needs no dependency on it.
+
+**Files:**
+- Create: `server/src/services/ai-tools.ts`
+- Modify: `server/src/mcp/schemas.ts`, `server/src/services/index.ts`
+- Test: `test/unit/ai-tools.test.ts`, `test/integration/ai-tools.test.mjs`
+
+**Interfaces:**
+- Consumes:
+  - the tool definitions `browseCollectionsTool`, `searchProductsTool`, `viewProductTool`, `findBoutiquesTool` (Task 9), `pendingConfirmationsTool` (Task 11), `appointmentRequestsTool`, `confirmAppointmentTool` (Task 11b)
+  - `getConfig` (Task 5), `ErrorCode` (Task 2), `fakeStrapi` (Task 7)
+- Produces:
+  - service `ai-tools` with `getTools(): ChatTool[]` and `getMeta(): { label: 'Maison'; description: string }`
+  - `interface ChatTool { name; description; schema: z.ZodObject; action: string; execute(args: unknown): Promise<unknown> }`. `execute` resolves to the tool's `structuredContent`, or to `{ error: { code, message, hint } }`.
+  - `CHAT_TOOLS`, the seven MCP definitions the chat offers
+  - `describeIssues(error: z.ZodError): string` in `server/src/mcp/schemas.ts`
+
+**The contract, as 1.6.0 implements it.** This comes from its `docs/extending.md` and was confirmed in `dist/server`:
+- **Discovery.** On each chat request it looks at every installed plugin and calls `strapi.plugin(name).service('ai-tools').getTools()`. It skips any tool without `name`, `schema` or an `execute` function.
+- **Actions.** A tool's `action` must be an admin action that `admin::permission`'s `actionProvider` knows. Otherwise the tool is skipped, with only a warning in the log. The integration test checks every chat tool's action against the real registry.
+- **Names and gating.** Tools appear to the model as `maison__<name>`, with the description prefixed by `[Maison]` from `getMeta().label`. Each tool is offered only if the signed-in admin's ability `can(action)`.
+- **Calls.** `@tanstack/ai` validates the model's arguments with the tool's `schema` and then calls `execute(args, strapi, {})`. It passes no admin user and no ability.
+
+**Zod.** `@tanstack/ai` 0.52 turns a tool's `schema` into JSON Schema through the Standard JSON Schema interface, calling `schema['~standard'].jsonSchema.input({ target: 'draft-07' })`, and validates arguments with `~standard.validate`. zod 4.2 and later provide both. Maison's schemas come from `@strapi/utils`, which is zod 4.4.3 in Strapi 5.55.1, and the chat plugin builds its own tools with the same `z` (`@strapi/utils` is its peer dependency). A zod 3 schema has no `jsonSchema` and would reach the model broken. A unit test checks the conversion for every chat tool.
+
+**The handler context.** Strapi calls `createHandler(strapi, context)` with the token's ability and user. No Maison handler reads it: every `createHandler` takes only `strapi`, and no schema resolver uses its argument. The chat has no context to give, so the adapter passes a placeholder, and a unit test fails if a chat tool's handler starts declaring the parameter.
+
+**What the chat gets:**
+- **Offered:** `browse_collections`, `search_products`, `view_product` and `find_boutiques` (`catalog.read`); `appointment_requests` (`appointments.review`); `confirm_appointment` (`appointments.confirm`); and `pending_confirmations` (`confirmations.send`), which is read-only.
+- **Not offered:** `request_appointment` and `my_appointments` act for a signed-in LINE customer, and an admin chat has an admin instead, so they would only answer `not_signed_in`. `record_confirmation` records the outcome of a LINE push, which only the ops agent makes.
+- **Errors.** An expected failure comes back as a value, `{ error: { code, message, hint } }`, so the model reads the hint and recovers. That matches what MCP clients see. Arguments that fail the schema return `invalid_input`, and the handler never runs.
+- **Disabled tools.** `disabledTools` applies here too, so a tool disabled for MCP is also missing from the chat.
+
+- [ ] **Step 1: Write the failing unit test `test/unit/ai-tools.test.ts`**
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+import aiToolsService, { CHAT_TOOLS } from '../../server/src/services/ai-tools';
+import { fakeStrapi } from './fake-strapi';
+
+const chatTools = (services: Record<string, unknown> = {}, config: Record<string, unknown> = {}) =>
+  aiToolsService({ strapi: fakeStrapi({ services, config }) }).getTools();
+const toolNamed = (tools: any[], name: string) => tools.find((tool) => tool.name === name);
+
+describe('ai-tools for the in-admin chat', () => {
+  it('offers the catalog, staff and pending-confirmation tools, each gated by its MCP permission', () => {
+    expect(chatTools().map((tool) => [tool.name, tool.action])).toEqual([
+      ['browse_collections', 'plugin::maison.catalog.read'],
+      ['search_products', 'plugin::maison.catalog.read'],
+      ['view_product', 'plugin::maison.catalog.read'],
+      ['find_boutiques', 'plugin::maison.catalog.read'],
+      ['appointment_requests', 'plugin::maison.appointments.review'],
+      ['confirm_appointment', 'plugin::maison.appointments.confirm'],
+      ['pending_confirmations', 'plugin::maison.confirmations.send'],
+    ]);
+  });
+
+  it('never offers the customer tools or record_confirmation', () => {
+    const names = chatTools().map((tool) => tool.name);
+    for (const name of ['request_appointment', 'my_appointments', 'record_confirmation']) expect(names).not.toContain(name);
+  });
+
+  it('uses the MCP descriptions, with schemas @tanstack/ai can turn into JSON Schema', () => {
+    for (const tool of chatTools()) {
+      expect(tool.description).toBe(CHAT_TOOLS.find((mcpTool) => mcpTool.name === tool.name)?.description);
+      // @tanstack/ai reads zod 4's Standard JSON Schema; a zod 3 schema has none and would reach the model broken.
+      const jsonSchema = (tool.schema as any)['~standard'].jsonSchema.input({ target: 'draft-07' });
+      expect(jsonSchema.type, tool.name).toBe('object');
+    }
+  });
+
+  it('leaves out tools listed in disabledTools, as MCP registration does', () => {
+    const names = chatTools({}, { disabledTools: ['confirm_appointment'] }).map((tool) => tool.name);
+    expect(names).not.toContain('confirm_appointment');
+    expect(names).toContain('appointment_requests');
+  });
+
+  it('runs the MCP handler and returns its structured result', async () => {
+    const searchProducts = vi.fn(async () => ({ total: 0, products: [] }));
+    const tool = toolNamed(chatTools({ catalog: { searchProducts } }), 'search_products');
+    await expect(tool.execute({ occasion: 'travel', locale: 'en' })).resolves.toEqual({ locale: 'en', total: 0, products: [] });
+    expect(searchProducts).toHaveBeenCalledWith('en', { occasion: 'travel', locale: 'en' });
+  });
+
+  it('unwraps a tool error into { error } with its code, message and hint', async () => {
+    const confirm = vi.fn(async () => ({ ok: false, code: 'in_the_past', message: 'The visit has passed.', hint: 'Ask for a new time.' }));
+    const tool = toolNamed(chatTools({ appointments: { confirm } }), 'confirm_appointment');
+    await expect(tool.execute({ reference: 'APT-4821' })).resolves.toEqual({
+      error: { code: 'in_the_past', message: 'The visit has passed.', hint: 'Ask for a new time.' },
+    });
+  });
+
+  it('answers invalid arguments with invalid_input and never calls the service', async () => {
+    const confirm = vi.fn();
+    const tool = toolNamed(chatTools({ appointments: { confirm } }), 'confirm_appointment');
+    const result = await tool.execute({ reference: '4821' });
+    expect(result.error.code).toBe('invalid_input');
+    expect(result.error.message).toBe('reference: Use a reference like APT-4821.');
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('wraps only handlers that ignore the MCP handler context, which the chat does not have', () => {
+    for (const tool of CHAT_TOOLS) expect(tool.createHandler.length, tool.name).toBe(1);
+  });
+
+  it("names Maison in the chat's Tools menu", () => {
+    expect(aiToolsService({ strapi: fakeStrapi() }).getMeta()).toEqual({ label: 'Maison', description: expect.any(String) });
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npx vitest run test/unit/ai-tools.test.ts`
+Expected: FAIL with "Failed to resolve import ../../server/src/services/ai-tools".
+
+- [ ] **Step 3: Add `describeIssues` to `server/src/mcp/schemas.ts`**
+
+Append:
+
+```ts
+/** Zod issues on one line, e.g. `reference: Use a reference like APT-4821.` */
+export const describeIssues = (error: z.ZodError): string =>
+  error.issues.map((issue) => `${issue.path.map(String).join('.') || 'input'}: ${issue.message}`).join('; ');
+```
+
+- [ ] **Step 4: Implement `server/src/services/ai-tools.ts`**
+
+```ts
+import type { Core, Modules } from '@strapi/strapi';
+import { z } from '@strapi/utils';
+
+import { getConfig } from '../config';
+import type { ErrorCode } from '../domain/tool-result';
+import { describeIssues } from '../mcp/schemas';
+import { appointmentRequestsTool } from '../mcp/tools/appointment-requests';
+import { browseCollectionsTool } from '../mcp/tools/browse-collections';
+import { confirmAppointmentTool } from '../mcp/tools/confirm-appointment';
+import { findBoutiquesTool } from '../mcp/tools/find-boutiques';
+import { pendingConfirmationsTool } from '../mcp/tools/pending-confirmations';
+import { searchProductsTool } from '../mcp/tools/search-products';
+import { viewProductTool } from '../mcp/tools/view-product';
+
+type HandlerContext = Modules.MCP.McpHandlerContext;
+
+/** The parts of a Maison MCP tool definition that the chat uses. */
+interface McpTool {
+  name: string;
+  description: string;
+  auth: { policies: ReadonlyArray<{ action: string }> };
+  resolveInputSchema?: (context: HandlerContext) => z.ZodObject<z.ZodRawShape>;
+  createHandler: (
+    strapi: Core.Strapi,
+    context: HandlerContext
+  ) => (params: { args: any; extra: Modules.MCP.McpCapabilityHandlerContext }) => Promise<unknown>;
+}
+
+/** A tool as strapi-plugin-tanstack-ai 1.6 reads it from a plugin's `ai-tools` service. */
+export interface ChatTool {
+  name: string;
+  description: string;
+  schema: z.ZodObject<z.ZodRawShape>;
+  /** The admin permission the chat checks before it offers the tool to the signed-in admin. */
+  action: string;
+  execute: (args: unknown) => Promise<unknown>;
+}
+
+export interface ChatToolError {
+  error: { code: ErrorCode; message: string; hint: string };
+}
+
+type HandlerResult = { isError?: boolean; content: Array<{ type: string; text?: string }>; structuredContent?: unknown };
+
+/**
+ * What the in-admin chat offers: the catalog reads, the two staff tools and the read-only pending confirmations.
+ * request_appointment and my_appointments act for a signed-in LINE customer, and a chat has an admin instead.
+ * record_confirmation records a LINE push, which only the ops agent makes.
+ */
+export const CHAT_TOOLS: McpTool[] = [
+  browseCollectionsTool,
+  searchProductsTool,
+  viewProductTool,
+  findBoutiquesTool,
+  appointmentRequestsTool,
+  confirmAppointmentTool,
+  pendingConfirmationsTool,
+];
+
+/**
+ * The chat calls execute(args, strapi) with no admin user or ability, and no Maison handler reads the MCP handler
+ * context: every createHandler takes only strapi, and the schema resolvers ignore it. A unit test keeps it that way.
+ */
+const NO_CONTEXT = { userAbility: undefined, user: { id: 0 } } as unknown as HandlerContext;
+
+const invalidInput = (tool: McpTool, error: z.ZodError): ChatToolError => ({
+  error: { code: 'invalid_input', message: describeIssues(error), hint: `Call ${tool.name} again with arguments that match its schema.` },
+});
+
+/** One MCP tool as a chat tool: the same schema, permission and handler, with the MCP result unwrapped. */
+const toChatTool = (strapi: Core.Strapi, tool: McpTool): ChatTool => {
+  const schema = tool.resolveInputSchema?.(NO_CONTEXT) ?? z.object({});
+  return {
+    name: tool.name,
+    description: tool.description,
+    schema,
+    action: tool.auth.policies[0].action,
+    async execute(args) {
+      const parsed = schema.safeParse(args ?? {});
+      if (!parsed.success) return invalidInput(tool, parsed.error);
+      const result = (await tool.createHandler(strapi, NO_CONTEXT)({ args: parsed.data, extra: {} })) as HandlerResult;
+      if (result.isError) return JSON.parse(result.content[0].text) as ChatToolError;
+      return result.structuredContent;
+    },
+  };
+};
+
+/** Tools for strapi-plugin-tanstack-ai's in-admin chat, built from the MCP tool definitions so the two can't drift. */
+export default ({ strapi }: { strapi: Core.Strapi }) => ({
+  getTools(): ChatTool[] {
+    const disabled = new Set<string>(getConfig(strapi).disabledTools);
+    return CHAT_TOOLS.filter((tool) => !disabled.has(tool.name)).map((tool) => toChatTool(strapi, tool));
+  },
+
+  getMeta() {
+    return { label: 'Maison', description: 'Catalog, boutiques and appointment requests of the Maison house' };
+  },
+});
+```
+
+Register it in `server/src/services/index.ts` under the name the chat looks for:
+
+```ts
+import aiTools from './ai-tools';
+import appointments from './appointments';
+import catalog from './catalog';
+import confirmations from './confirmations';
+import errors from './errors';
+import identity from './identity';
+import seed from './seed';
+
+export default {
+  'ai-tools': aiTools,
+  appointments,
+  catalog,
+  confirmations,
+  errors,
+  identity,
+  seed,
+};
+```
+
+- [ ] **Step 5: Run the unit tests and type checks**
+
+Run: `npx vitest run && npm run test:ts:back`
+Expected: all pass, and tsc exits 0.
+
+- [ ] **Step 6: Write `test/integration/ai-tools.test.mjs`**
+
+`confirm_appointment` uses the real clock through `execute`, so the appointment is years ahead.
+
+```js
+import assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
+
+import { SUBJECT_A, bootStrapi } from './harness.mjs';
+
+describe('ai-tools for the in-admin chat', () => {
+  let strapi;
+  let tools;
+  let reference;
+  const tool = (name) => tools.find((candidate) => candidate.name === name);
+
+  before(async () => {
+    strapi = await bootStrapi('ai-tools');
+    await strapi.plugin('maison').service('seed').loadDemoCatalog();
+    // confirm_appointment uses the real clock, so the visit is years ahead.
+    const requested = await strapi.plugin('maison').service('appointments').request({
+      subject: SUBJECT_A, boutique: 'ginza', productSlugs: ['weekender-50'], requestedFor: '2030-01-12T14:00:00+09:00', createdVia: 'concierge',
+    });
+    reference = requested.value.reference;
+    // The same lookup strapi-plugin-tanstack-ai makes for every installed plugin.
+    tools = strapi.plugin('maison').service('ai-tools').getTools();
+  });
+
+  after(async () => {
+    await strapi?.destroy();
+  });
+
+  it('declares only permission actions that Strapi has registered', () => {
+    // The chat skips a tool whose action isn't registered, without an error.
+    const { actionProvider } = strapi.service('admin::permission');
+    for (const { name, action } of tools) assert.ok(actionProvider.get(action), `${name} needs ${action}`);
+  });
+
+  it('answers the demo question through search_products', async () => {
+    const result = await tool('search_products').execute({ occasion: 'travel', maxPriceJpy: 400000, inStockAt: 'ginza', locale: 'en' }, strapi);
+    assert.deepEqual(result.products.map((p) => p.slug), ['weekender-50', 'garment-carrier', 'watch-roll-trois', 'passport-cover', 'luggage-tag-duo']);
+    assert.equal(result.products[0].name, 'Weekender 50');
+  });
+
+  it('confirms a request through confirm_appointment, once', async () => {
+    const first = await tool('confirm_appointment').execute({ reference }, strapi);
+    assert.equal(first.alreadyConfirmed, false);
+    assert.equal(first.appointment.reference, reference);
+    assert.equal(first.appointment.status, 'confirmed');
+    assert.equal(first.appointment.customer, 'line:Uaaa…aa');
+    assert.equal(await strapi.documents('plugin::maison.appointment').count({ status: 'published', filters: { reference } }), 1);
+
+    const again = await tool('confirm_appointment').execute({ reference }, strapi);
+    assert.equal(again.alreadyConfirmed, true);
+  });
+
+  it('returns expected failures as { error } for the model to read', async () => {
+    const result = await tool('confirm_appointment').execute({ reference: 'APT-0000' }, strapi);
+    assert.equal(result.error.code, 'not_found');
+    assert.match(result.error.hint, /appointment_requests/);
+  });
+});
+```
+
+- [ ] **Step 7: Build, push and run all integration tests**
+
+```bash
+npm run link
+STRAPI_APP_DIR=/Users/paul/work/launchpad-fork-latest/strapi npm run test:integration
+```
+
+Expected: every integration file passes, including the 4 `ai-tools` cases.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add server/src test/unit/ai-tools.test.ts test/integration/ai-tools.test.mjs
+git commit -m "feat: offer Maison's tools to the in-admin chat through an ai-tools service"
+```
+
+---
+
+### Task 12: Maison admin page: the requests board, its admin routes and the demo data
+
+This replaces the earlier admin page that only loaded and reset the demo. The page now leads with a live board of appointment requests.
+
+**Files:**
+- Create: `server/src/controllers/appointments.ts`, `admin/src/permissions.ts`, `admin/src/components/RequestsBoard.tsx`, `admin/src/components/DemoData.tsx`, `admin/src/pages/MaisonPage.tsx`
+- Modify: `server/src/routes/index.ts`, `server/src/controllers/index.ts`, `admin/src/index.ts`
+- Test: `test/unit/admin-routes.test.ts`
+
+**Interfaces:**
+- Consumes:
+  - service `appointments.listRequests(filters)` and `appointments.confirm(reference)`, plus `appointmentRequestsInput` and `referenceInput` (Task 11b)
+  - `describeIssues` (Task 11c), `ServiceFailure` (Task 10)
+  - the `demo` controller and its seed and reset results (Task 8): `{ created, collections, products, boutiques, stockLevels }` and `{ appointments, notifications }`
+- Produces:
+  - `GET /maison/appointments` (`appointments.review`). The query takes the `appointment_requests` filters, and the response is `{ appointments: StaffAppointmentView[] }`.
+  - `POST /maison/appointments/:reference/confirm` (`appointments.confirm`), which returns `{ appointment, alreadyConfirmed }`. `not_found` is a 404; `in_the_past` and bad input are a 400.
+  - `POST /maison/demo/seed` and `POST /maison/demo/reset`, unchanged (`demo.manage`)
+  - a "Maison" menu entry for admins who hold `appointments.review` or `demo.manage`
+
+**Routes and responses:**
+- Plugin admin routes are served at `/<plugin id>/<path>`, not under `/admin`. `useFetchClient` adds the backend URL and the admin session.
+- **Errors.** The controller answers a failure with `ctx.notFound` or `ctx.badRequest`. That produces Strapi's error body, `{ data: null, error: { status, name, message, details } }`, with the tools' `code` and `hint` in `details`. `useFetchClient` turns it into a `FetchError` whose message is the server's message, so a notification can show it as is.
+- **Query parameters.** The routes validate with the tools' own zod inputs. Query strings arrive as text, so the controller turns `limit` into a number first.
+
+**Permissions in the admin:**
+- The menu link and `Page.Protect` both pass when the admin holds any one of their permissions, so `page` lists review and demo management.
+- `useRBAC` names each allowed action after the last segment of its UID: `canReview`, `canConfirm` and `canManage`. The page uses those to show or hide the board, the Confirm buttons and the demo data.
+
+**The board:**
+- **Refresh.** It loads again every 5 seconds and whenever the demo data changes. A counter ignores answers to older loads, so after a filter switch a slow answer for the old filter can't replace the new one.
+- **Errors.** A failed refresh shows inline, not as a notification, so a restarting server doesn't flood the screen.
+- **Visit time** is cut from the ISO string, so it's the boutique's own time whatever the browser's time zone.
+- **Confirm** appears only on requested rows whose visit is still ahead: the same rule the server applies.
+
+- [ ] **Step 1: Write the failing test `test/unit/admin-routes.test.ts`**
+
+```ts
+import { describe, expect, it, vi } from 'vitest';
+import appointmentsController from '../../server/src/controllers/appointments';
+import routes from '../../server/src/routes';
+import { fakeStrapi } from './fake-strapi';
+
+/** Enough of a Koa context: Strapi's ctx.badRequest and ctx.notFound set the status and an error body. */
+const fakeCtx = (overrides: Record<string, unknown> = {}) => {
+  const ctx: any = { query: {}, params: {}, status: 200, body: undefined, ...overrides };
+  ctx.badRequest = vi.fn((message: string, details: unknown) => {
+    ctx.status = 400;
+    ctx.body = { error: { message, details } };
+  });
+  ctx.notFound = vi.fn((message: string, details: unknown) => {
+    ctx.status = 404;
+    ctx.body = { error: { message, details } };
+  });
+  return ctx;
+};
+const controllerWith = (appointments: Record<string, unknown>) =>
+  appointmentsController({ strapi: fakeStrapi({ services: { appointments } }) });
+
+describe('admin routes', () => {
+  const gate = (action: string) => ['admin::isAuthenticatedAdmin', { name: 'admin::hasPermissions', config: { actions: [action] } }];
+  const policiesOf = (method: string, path: string) =>
+    routes.admin.routes.find((route) => route.method === method && route.path === path)?.config.policies;
+
+  it('each require a signed-in admin with the matching Maison permission', () => {
+    expect(routes.admin.type).toBe('admin');
+    expect(routes.admin.routes).toHaveLength(4);
+    expect(policiesOf('GET', '/appointments')).toEqual(gate('plugin::maison.appointments.review'));
+    expect(policiesOf('POST', '/appointments/:reference/confirm')).toEqual(gate('plugin::maison.appointments.confirm'));
+    expect(policiesOf('POST', '/demo/seed')).toEqual(gate('plugin::maison.demo.manage'));
+    expect(policiesOf('POST', '/demo/reset')).toEqual(gate('plugin::maison.demo.manage'));
+  });
+});
+
+describe('appointments controller', () => {
+  it('lists with the filters from the query string', async () => {
+    const listRequests = vi.fn(async () => ({ ok: true, value: [] }));
+    const ctx = fakeCtx({ query: { status: 'all', limit: '5' } });
+    await controllerWith({ listRequests }).list(ctx);
+    expect(listRequests).toHaveBeenCalledWith({ status: 'all', limit: 5 });
+    expect(ctx.body).toEqual({ appointments: [] });
+  });
+
+  it('answers bad filters with 400 invalid_input and never calls the service', async () => {
+    const listRequests = vi.fn();
+    for (const query of [{ status: 'pending' }, { limit: '0' }, { limit: 'ten' }, { date: '10/10/2026' }]) {
+      const ctx = fakeCtx({ query });
+      await controllerWith({ listRequests }).list(ctx);
+      expect(ctx.status, JSON.stringify(query)).toBe(400);
+      expect(ctx.body.error.details.code).toBe('invalid_input');
+    }
+    expect(listRequests).not.toHaveBeenCalled();
+  });
+
+  it('returns the confirmed appointment', async () => {
+    const value = { appointment: { reference: 'APT-4821', status: 'confirmed' }, alreadyConfirmed: false };
+    const confirm = vi.fn(async () => ({ ok: true, value }));
+    const ctx = fakeCtx({ params: { reference: 'APT-4821' } });
+    await controllerWith({ confirm }).confirm(ctx);
+    expect(confirm).toHaveBeenCalledWith('APT-4821');
+    expect(ctx.body).toEqual(value);
+  });
+
+  it.each([
+    ['not_found', 404],
+    ['in_the_past', 400],
+  ])('answers %s with %i, the message and the hint', async (code, status) => {
+    const confirm = vi.fn(async () => ({ ok: false, code, message: 'Not possible.', hint: 'Try another.' }));
+    const ctx = fakeCtx({ params: { reference: 'APT-4821' } });
+    await controllerWith({ confirm }).confirm(ctx);
+    expect(ctx.status).toBe(status);
+    expect(ctx.body.error).toEqual({ message: 'Not possible.', details: { code, hint: 'Try another.' } });
+  });
+
+  it('rejects a malformed reference without calling the service', async () => {
+    const confirm = vi.fn();
+    const ctx = fakeCtx({ params: { reference: 'APT-48' } });
+    await controllerWith({ confirm }).confirm(ctx);
+    expect(ctx.status).toBe(400);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npx vitest run test/unit/admin-routes.test.ts`
+Expected: FAIL with "Failed to resolve import ../../server/src/controllers/appointments".
+
+- [ ] **Step 3: Add the admin routes and the controller**
+
+`server/src/routes/index.ts`:
+
+```ts
+import { ACTION } from '../constants';
+
+/** Signed-in admins whose role holds `action`. Admin routes are served at /maison/<path>. */
+const allow = (action: string) => [
+  'admin::isAuthenticatedAdmin',
+  { name: 'admin::hasPermissions', config: { actions: [action] } },
+];
+
+export default {
+  admin: {
+    type: 'admin',
+    routes: [
+      { method: 'GET', path: '/appointments', handler: 'appointments.list', config: { policies: allow(ACTION.appointmentsReview) } },
+      {
+        method: 'POST',
+        path: '/appointments/:reference/confirm',
+        handler: 'appointments.confirm',
+        config: { policies: allow(ACTION.appointmentsConfirm) },
+      },
+      { method: 'POST', path: '/demo/seed', handler: 'demo.seed', config: { policies: allow(ACTION.demoManage) } },
+      { method: 'POST', path: '/demo/reset', handler: 'demo.reset', config: { policies: allow(ACTION.demoManage) } },
+    ],
+  },
+};
+```
+
+`server/src/controllers/appointments.ts`:
+
+```ts
+import type { Core } from '@strapi/strapi';
+
+import type { ServiceFailure } from '../domain/service-result';
+import { appointmentRequestsInput, describeIssues, referenceInput } from '../mcp/schemas';
+
+/** Query strings are text, so a limit arrives as "20". */
+const filtersFrom = (query: Record<string, unknown> = {}) =>
+  query.limit === undefined ? query : { ...query, limit: Number(query.limit) };
+
+/** The tools' codes and hints in Strapi's error body: 404 for not_found, 400 for the rest. */
+const fail = (ctx, { code, message, hint }: ServiceFailure) =>
+  code === 'not_found' ? ctx.notFound(message, { code, hint }) : ctx.badRequest(message, { code, hint });
+
+/** The requests board in the admin. Same service, same filters and same answers as the staff MCP tools. */
+export default ({ strapi }: { strapi: Core.Strapi }) => ({
+  async list(ctx) {
+    const filters = appointmentRequestsInput.safeParse(filtersFrom(ctx.query));
+    if (!filters.success) {
+      return ctx.badRequest(describeIssues(filters.error), { code: 'invalid_input', hint: 'Fix the filters and try again.' });
+    }
+    const result = await strapi.plugin('maison').service('appointments').listRequests(filters.data);
+    if (!result.ok) return fail(ctx, result);
+    ctx.body = { appointments: result.value };
+  },
+
+  async confirm(ctx) {
+    const reference = referenceInput.safeParse(ctx.params.reference);
+    if (!reference.success) {
+      return ctx.badRequest(describeIssues(reference.error), { code: 'invalid_input', hint: 'Use a reference like APT-4821.' });
+    }
+    const result = await strapi.plugin('maison').service('appointments').confirm(reference.data);
+    if (!result.ok) return fail(ctx, result);
+    ctx.body = result.value;
+  },
+});
+```
+
+`server/src/controllers/index.ts`:
+
+```ts
+import appointments from './appointments';
+import demo from './demo';
+
+export default { appointments, demo };
+```
+
+- [ ] **Step 4: Run the unit tests and type checks**
+
+Run: `npx vitest run && npm run test:ts:back`
+Expected: all pass, and tsc exits 0.
+
+- [ ] **Step 5: Create `admin/src/permissions.ts`**
+
+```ts
+const REVIEW = { action: 'plugin::maison.appointments.review', subject: null };
+const CONFIRM = { action: 'plugin::maison.appointments.confirm', subject: null };
+const MANAGE = { action: 'plugin::maison.demo.manage', subject: null };
+
+export const PERMISSIONS = {
+  /** The menu entry and the page: staff who review requests, or who manage the demo data. Either one is enough. */
+  page: [REVIEW, MANAGE],
+  /** Checked with useRBAC, which answers canReview, canConfirm and canManage. */
+  sections: [REVIEW, CONFIRM, MANAGE],
+};
+```
+
+- [ ] **Step 6: Create the requests board `admin/src/components/RequestsBoard.tsx`**
+
+```tsx
+import * as React from 'react';
+
+import {
+  Badge,
+  Box,
+  Button,
+  Flex,
+  SingleSelect,
+  SingleSelectOption,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+  Typography,
+} from '@strapi/design-system';
+import { useFetchClient, useNotification } from '@strapi/strapi/admin';
+
+type Status = 'requested' | 'confirmed' | 'all';
+
+/** One row of GET /maison/appointments (StaffAppointmentView on the server). */
+interface StaffAppointment {
+  reference: string;
+  status: 'requested' | 'confirmed';
+  customer: string;
+  boutique: { slug: string; name: string } | null;
+  requestedFor: string;
+  products: Array<{ slug: string; name: string }>;
+  note: string;
+  createdVia: 'concierge' | 'app';
+  confirmationSent: boolean;
+  createdAt: string;
+}
+
+const REFRESH_MS = 5000;
+const STATUS_LABELS: Record<Status, string> = { requested: 'Waiting for staff', confirmed: 'Confirmed', all: 'All requests' };
+const EMPTY: Record<Status, string> = {
+  requested: 'No requests are waiting for staff.',
+  confirmed: 'No confirmed requests yet.',
+  all: 'No requests yet.',
+};
+
+/** "2026-10-10T14:00:00+09:00" → "2026-10-10 14:00": the boutique's own time, whatever the browser's time zone. */
+const visitTime = (iso: string) => iso.slice(0, 16).replace('T', ' ');
+const canStillConfirm = (appointment: StaffAppointment) =>
+  appointment.status === 'requested' && Date.parse(appointment.requestedFor) > Date.now();
+
+export const RequestsBoard = ({ canConfirm, refreshKey }: { canConfirm: boolean; refreshKey: number }) => {
+  const { get, post } = useFetchClient();
+  const { toggleNotification } = useNotification();
+  const [status, setStatus] = React.useState<Status>('requested');
+  const [appointments, setAppointments] = React.useState<StaffAppointment[] | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [confirming, setConfirming] = React.useState<string | null>(null);
+  const latestLoad = React.useRef(0);
+
+  const load = React.useCallback(async () => {
+    const id = ++latestLoad.current;
+    try {
+      const { data } = await get<{ appointments: StaffAppointment[] }>('/maison/appointments', { params: { status } });
+      if (id !== latestLoad.current) return; // a newer load, e.g. for another filter, has started
+      setAppointments(data.appointments);
+      setLoadError(null);
+    } catch (error) {
+      if (id === latestLoad.current) setLoadError((error as Error).message);
+    }
+  }, [get, status]);
+
+  React.useEffect(() => {
+    load();
+    const timer = window.setInterval(load, REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [load, refreshKey]);
+
+  const confirm = async (reference: string) => {
+    setConfirming(reference);
+    try {
+      await post(`/maison/appointments/${reference}/confirm`);
+      toggleNotification({ type: 'success', message: `Confirmed ${reference}. The LINE ops agent sends the customer's confirmation.` });
+      await load();
+    } catch (error) {
+      toggleNotification({ type: 'danger', message: (error as Error).message });
+    } finally {
+      setConfirming(null);
+    }
+  };
+
+  const columns = ['Reference', 'Customer', 'Boutique', 'Visit', 'Products', 'Status', 'LINE', 'Created via', ...(canConfirm ? [''] : [])];
+
+  return (
+    <Flex direction="column" alignItems="stretch" gap={4}>
+      <Flex justifyContent="space-between" alignItems="flex-end" gap={4}>
+        <Flex direction="column" alignItems="flex-start" gap={1}>
+          <Typography variant="delta" tag="h2">
+            Appointment requests
+          </Typography>
+          <Typography variant="pi" textColor="neutral600">
+            Refreshes every {REFRESH_MS / 1000} seconds. {loadError ? `Last refresh failed: ${loadError}` : ''}
+          </Typography>
+        </Flex>
+        <Box width="20rem">
+          <SingleSelect aria-label="Status" size="S" value={status} onChange={(value) => setStatus(value as Status)}>
+            {(Object.keys(STATUS_LABELS) as Status[]).map((key) => (
+              <SingleSelectOption key={key} value={key}>
+                {STATUS_LABELS[key]}
+              </SingleSelectOption>
+            ))}
+          </SingleSelect>
+        </Box>
+      </Flex>
+
+      {appointments === null ? (
+        <Typography textColor="neutral600">Loading requests…</Typography>
+      ) : appointments.length === 0 ? (
+        <Box background="neutral0" padding={6} hasRadius shadow="tableShadow">
+          <Typography textColor="neutral600">{EMPTY[status]}</Typography>
+        </Box>
+      ) : (
+        <Table colCount={columns.length} rowCount={appointments.length + 1}>
+          <Thead>
+            <Tr>
+              {columns.map((column) => (
+                <Th key={column}>
+                  <Typography variant="sigma">{column}</Typography>
+                </Th>
+              ))}
+            </Tr>
+          </Thead>
+          <Tbody>
+            {appointments.map((appointment) => (
+              <Tr key={appointment.reference}>
+                <Td>
+                  <Typography fontWeight="bold">{appointment.reference}</Typography>
+                </Td>
+                <Td>
+                  <Typography>{appointment.customer}</Typography>
+                </Td>
+                <Td>
+                  <Typography>{appointment.boutique?.name ?? '—'}</Typography>
+                </Td>
+                <Td>
+                  <Typography>{visitTime(appointment.requestedFor)}</Typography>
+                </Td>
+                <Td>
+                  <Typography>{appointment.products.map((product) => product.name).join(', ') || '—'}</Typography>
+                </Td>
+                <Td>
+                  <Badge variant={appointment.status === 'confirmed' ? 'success' : 'warning'}>{appointment.status}</Badge>
+                </Td>
+                <Td>
+                  <Badge variant={appointment.confirmationSent ? 'success' : 'neutral'}>
+                    {appointment.confirmationSent ? 'LINE sent' : 'not sent'}
+                  </Badge>
+                </Td>
+                <Td>
+                  <Typography>{appointment.createdVia}</Typography>
+                </Td>
+                {canConfirm && (
+                  <Td>
+                    {canStillConfirm(appointment) && (
+                      <Button
+                        size="S"
+                        loading={confirming === appointment.reference}
+                        disabled={confirming !== null}
+                        onClick={() => confirm(appointment.reference)}
+                      >
+                        Confirm
+                      </Button>
+                    )}
+                  </Td>
+                )}
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+    </Flex>
+  );
+};
+```
+
+- [ ] **Step 7: Create the demo data section `admin/src/components/DemoData.tsx`**
 
 ```tsx
 import { useState } from 'react';
 
 import { Box, Button, Flex, Typography } from '@strapi/design-system';
-import { Layouts, Page, useFetchClient, useNotification } from '@strapi/strapi/admin';
-
-import { PERMISSIONS } from '../permissions';
+import { useFetchClient, useNotification } from '@strapi/strapi/admin';
 
 type SeedResult = { created: boolean; collections: number; products: number; boutiques: number; stockLevels: number };
 type ResetResult = { appointments: number; notifications: number };
@@ -4527,24 +6028,10 @@ const describeSeed = (result: SeedResult) =>
     ? `Loaded ${result.products} products, ${result.collections} collections, ${result.boutiques} boutiques and ${result.stockLevels} stock levels.`
     : 'The demo catalog is already loaded.';
 
-const describeReset = (result: ResetResult) =>
-  `Deleted ${result.appointments} appointments and ${result.notifications} notifications.`;
+const describeReset = (result: ResetResult) => `Deleted ${result.appointments} appointments and ${result.notifications} notifications.`;
 
-const DemoCard = ({ title, body, children }: { title: string; body: string; children: React.ReactNode }) => (
-  <Box background="neutral0" padding={6} hasRadius shadow="tableShadow">
-    <Flex direction="column" alignItems="flex-start" gap={3}>
-      <Typography variant="delta" textColor="neutral800" fontWeight="bold">
-        {title}
-      </Typography>
-      <Typography variant="omega" textColor="neutral600">
-        {body}
-      </Typography>
-      {children}
-    </Flex>
-  </Box>
-);
-
-const DemoPage = () => {
+/** Load the catalog, or clear appointments between rehearsals. `onChange` lets the board refresh at once. */
+export const DemoData = ({ onChange }: { onChange: () => void }) => {
   const { post } = useFetchClient();
   const { toggleNotification } = useNotification();
   const [running, setRunning] = useState<Action | null>(null);
@@ -4554,6 +6041,7 @@ const DemoPage = () => {
     try {
       const { data } = await post<T>(`/maison/demo/${action}`);
       toggleNotification({ type: 'success', message: describe(data) });
+      onChange();
     } catch (error) {
       toggleNotification({ type: 'danger', message: `That didn't work: ${(error as Error).message}` });
     } finally {
@@ -4562,48 +6050,77 @@ const DemoPage = () => {
   };
 
   return (
+    <Box background="neutral0" padding={6} hasRadius shadow="tableShadow">
+      <Flex direction="column" alignItems="flex-start" gap={3}>
+        <Typography variant="delta" tag="h2">
+          Demo data
+        </Typography>
+        <Typography variant="omega" textColor="neutral600">
+          Load demo catalog creates 3 collections, 12 products and 3 boutiques in Japanese and English, publishes them and sets
+          stock; if they are there already, nothing changes. Reset deletes every appointment and delivery record and keeps the
+          catalog.
+        </Typography>
+        <Flex gap={2}>
+          <Button loading={running === 'seed'} disabled={running !== null} onClick={() => run<SeedResult>('seed', describeSeed)}>
+            Load demo catalog
+          </Button>
+          <Button
+            variant="danger-light"
+            loading={running === 'reset'}
+            disabled={running !== null}
+            onClick={() => run<ResetResult>('reset', describeReset)}
+          >
+            Reset demo appointments
+          </Button>
+        </Flex>
+      </Flex>
+    </Box>
+  );
+};
+```
+
+- [ ] **Step 8: Create the page `admin/src/pages/MaisonPage.tsx`**
+
+```tsx
+import { useState } from 'react';
+
+import { Flex } from '@strapi/design-system';
+import { Layouts, Page, useRBAC } from '@strapi/strapi/admin';
+
+import { DemoData } from '../components/DemoData';
+import { RequestsBoard } from '../components/RequestsBoard';
+import { PERMISSIONS } from '../permissions';
+
+const MaisonPage = () => {
+  const { allowedActions, isLoading } = useRBAC(PERMISSIONS.sections);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  if (isLoading) return <Page.Loading />;
+
+  return (
     <Page.Main>
-      <Page.Title>Maison demo</Page.Title>
-      <Layouts.Header title="Maison demo" subtitle="Load the demo catalog, or clear appointments between rehearsals." />
+      <Page.Title>Maison</Page.Title>
+      <Layouts.Header title="Maison" subtitle="Boutique appointment requests from the app and the concierge, as they arrive." />
       <Layouts.Content>
-        <Flex direction="column" alignItems="stretch" gap={4}>
-          <DemoCard
-            title="Load demo catalog"
-            body="Creates 3 collections, 12 products and 3 boutiques in Japanese and English, publishes them and sets stock. If the catalog is already there, nothing changes."
-          >
-            <Button loading={running === 'seed'} disabled={running !== null} onClick={() => run<SeedResult>('seed', describeSeed)}>
-              Load demo catalog
-            </Button>
-          </DemoCard>
-          <DemoCard
-            title="Reset demo appointments"
-            body="Deletes every appointment and delivery record. The catalog stays as it is."
-          >
-            <Button
-              variant="danger-light"
-              loading={running === 'reset'}
-              disabled={running !== null}
-              onClick={() => run<ResetResult>('reset', describeReset)}
-            >
-              Reset demo appointments
-            </Button>
-          </DemoCard>
+        <Flex direction="column" alignItems="stretch" gap={8}>
+          {allowedActions.canReview && <RequestsBoard canConfirm={allowedActions.canConfirm} refreshKey={refreshKey} />}
+          {allowedActions.canManage && <DemoData onChange={() => setRefreshKey((key) => key + 1)} />}
         </Flex>
       </Layouts.Content>
     </Page.Main>
   );
 };
 
-const ProtectedDemoPage = () => (
-  <Page.Protect permissions={PERMISSIONS.manage}>
-    <DemoPage />
+const ProtectedMaisonPage = () => (
+  <Page.Protect permissions={PERMISSIONS.page}>
+    <MaisonPage />
   </Page.Protect>
 );
 
-export default ProtectedDemoPage;
+export default ProtectedMaisonPage;
 ```
 
-- [ ] **Step 3: Add the menu link in `admin/src/index.ts`**
+- [ ] **Step 9: Add the menu link in `admin/src/index.ts`**
 
 ```ts
 import { Crown } from '@strapi/icons';
@@ -4618,8 +6135,8 @@ export default {
       to: `plugins/${PLUGIN_ID}`,
       icon: Crown,
       intlLabel: { id: `${PLUGIN_ID}.plugin.name`, defaultMessage: 'Maison' },
-      Component: () => import('./pages/DemoPage'),
-      permissions: PERMISSIONS.manage,
+      Component: () => import('./pages/MaisonPage'),
+      permissions: PERMISSIONS.page,
     });
 
     app.registerPlugin({ id: PLUGIN_ID, name: 'Maison' });
@@ -4627,7 +6144,7 @@ export default {
 };
 ```
 
-- [ ] **Step 4: Type-check, build and verify**
+- [ ] **Step 10: Type-check, build and verify**
 
 ```bash
 npm run test:ts:front && npm run build && npm run verify
@@ -4635,33 +6152,47 @@ npm run test:ts:front && npm run build && npm run verify
 
 Expected: tsc exits 0, the build prints `Build complete!`, and `verify` passes.
 
-- [ ] **Step 5: Check it in LaunchPad's admin**
+- [ ] **Step 11: Commit**
 
 ```bash
+git add server/src/routes server/src/controllers admin/src test/unit/admin-routes.test.ts
+git commit -m "feat: add the Maison requests board and its admin routes"
+```
+
+- [ ] **Step 12: Check it in LaunchPad's admin (controller only)**
+
+The controller runs this step after the implementer's commit. The implementer never restarts the dev server.
+
+```bash
+cd /Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp
 npm run link
 kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
 ```
 
-When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204`, open `http://localhost:1338/admin` and sign in as the local test admin. The credentials are `LOCAL_TEST_ADMIN_EMAIL` and `LOCAL_TEST_ADMIN_PASSWORD` in `strapi/.env`; never print or commit them.
+When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204`, check that `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/maison/appointments` prints `401`. Then open `http://localhost:1338/admin` and sign in as the local test admin. The credentials are `LOCAL_TEST_ADMIN_EMAIL` and `LOCAL_TEST_ADMIN_PASSWORD` in `strapi/.env`; never print or commit them.
 
 Expected:
-1. **"Maison" appears in the main menu** with a crown icon.
+1. **"Maison" appears in the main menu** with a crown icon. The page shows "Appointment requests" above "Demo data".
 2. **"Load demo catalog"** shows a success notice, "Loaded 12 products, 3 collections, 3 boutiques and 36 stock levels.", the first time. It shows "already loaded" the second time.
-3. **Content Manager** lists 12 "Maison product" entries, published in both ja and en.
-4. **"Reset demo appointments"** shows "Deleted 0 appointments and 0 notifications."
+3. **A new request appears without a reload.** In the Content Manager, create a "Maison appointment" and save it without publishing:
+   - a reference not in use, e.g. `APT-7001`
+   - customer `line:U` followed by 32 lowercase hex characters
+   - boutique Ginza, one product, and a visit tomorrow at 14:00
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add admin/src
-git commit -m "feat: add the Maison admin page to load and reset demo data"
-```
+   Within 5 seconds the board lists it under "Waiting for staff". The customer is masked (`line:U`, three characters, `…`, two), with a "requested" badge, "not sent" and `app`.
+4. **Confirm** shows "Confirmed APT-7001. The LINE ops agent sends the customer's confirmation." The row leaves "Waiting for staff". Under "Confirmed" it has a "confirmed" badge, and the Content Manager shows it as Published.
+5. **"Reset demo appointments"** shows "Deleted 1 appointments and 0 notifications.", and the board is empty at once.
 
 ---
 
 ### Task 13: MCP smoke tests, README and pull request
 
-These tests call `/mcp` on the running LaunchPad dev server over HTTP, the way Claude Desktop or the app will. Here the customer token is a plain admin token with no LINE session, so customer tools must answer `not_signed_in`. The signed-in path is tested end to end in the LaunchPad plan, once oauth-mcp-manager 1.1 is installed.
+These tests call `/mcp` on the running LaunchPad dev server over HTTP, the way Claude Desktop or the app will, with three tokens:
+- **Customer token:** a plain admin token with no LINE session, so customer tools must answer `not_signed_in`. The signed-in path is tested end to end in the LaunchPad plan, once oauth-mcp-manager 1.1 is installed.
+- **Staff token:** holds `catalog.read`, `appointments.review` and `appointments.confirm`.
+- **Ops token:** holds `confirmations.send`.
+
+The dev server is `http://localhost:1338`.
 
 **Files:**
 - Create: `scripts/mcp-dev-tokens.mjs`, `test/mcp/tools.test.mjs`
@@ -4669,7 +6200,7 @@ These tests call `/mcp` on the running LaunchPad dev server over HTTP, the way C
 
 **Interfaces:**
 - Consumes: everything above, running in LaunchPad's Strapi on port 1338
-- Produces: `test/mcp/.tokens.json` (gitignored), with a `customer` and an `ops` admin token
+- Produces: `test/mcp/.tokens.json` (gitignored), with a `customer`, a `staff` and an `ops` admin token
 
 - [ ] **Step 1: Add the MCP client and ignore the token file**
 
@@ -4681,7 +6212,7 @@ printf '\n# MCP smoke-test tokens (scripts/mcp-dev-tokens.mjs)\ntest/mcp/.tokens
 - [ ] **Step 2: Write `scripts/mcp-dev-tokens.mjs`**
 
 ```js
-// Loads the demo catalog on a running Strapi and creates two admin API tokens for the MCP smoke tests.
+// Loads the demo catalog on a running Strapi and creates three admin API tokens for the MCP smoke tests.
 // Tokens are written to test/mcp/.tokens.json (gitignored) and never printed.
 // Usage: node --env-file=<strapi app>/.env scripts/mcp-dev-tokens.mjs
 import { writeFileSync } from 'node:fs';
@@ -4725,13 +6256,20 @@ const mint = async (name, actions) => {
 
 const tokens = {
   customer: await mint('maison-customer', ['plugin::maison.catalog.read', 'plugin::maison.appointments.request']),
+  staff: await mint('maison-staff', [
+    'plugin::maison.catalog.read',
+    'plugin::maison.appointments.review',
+    'plugin::maison.appointments.confirm',
+  ]),
   ops: await mint('maison-ops', ['plugin::maison.confirmations.send']),
 };
 writeFileSync(new URL('../test/mcp/.tokens.json', import.meta.url), `${JSON.stringify(tokens, null, 2)}\n`);
-console.log('Saved a customer token and an ops token to test/mcp/.tokens.json.');
+console.log('Saved a customer, a staff and an ops token to test/mcp/.tokens.json.');
 ```
 
 - [ ] **Step 3: Write `test/mcp/tools.test.mjs`**
+
+`toolNames` sorts, so each expected list is in alphabetical order.
 
 ```js
 import assert from 'node:assert/strict';
@@ -4754,34 +6292,49 @@ const connect = async (token) => {
 };
 const toolNames = async (client) =>
   (await client.listTools()).tools.map((tool) => tool.name).filter((name) => name !== 'log').sort(); // log exists in development only
+const promptNames = async (client) => ((await client.listPrompts().catch(() => ({ prompts: [] }))).prompts).map((prompt) => prompt.name);
 const errorOf = (result) => JSON.parse(result.content[0].text).error;
+const STAFF_TOOLS = ['appointment_requests', 'confirm_appointment'];
 
 describe('Maison over /mcp', () => {
   let customer;
+  let staff;
   let ops;
 
   before(async () => {
     customer = await connect(tokens.customer);
+    staff = await connect(tokens.staff);
     ops = await connect(tokens.ops);
   });
 
   after(async () => {
     await customer?.close();
+    await staff?.close();
     await ops?.close();
   });
 
   it('shows each token only the tools its permissions allow', async () => {
     assert.deepEqual(await toolNames(customer), [
-      'browse_collections', 'find_boutiques', 'view_product', 'my_appointments', 'request_appointment', 'search_products',
+      'browse_collections', 'find_boutiques', 'my_appointments', 'request_appointment', 'search_products', 'view_product',
+    ]);
+    assert.deepEqual(await toolNames(staff), [
+      'appointment_requests', 'browse_collections', 'confirm_appointment', 'find_boutiques', 'search_products', 'view_product',
     ]);
     assert.deepEqual(await toolNames(ops), ['pending_confirmations', 'record_confirmation']);
   });
 
+  it('keeps the staff tools away from the customer token', async () => {
+    const names = await toolNames(customer);
+    for (const name of STAFF_TOOLS) assert.ok(!names.includes(name), `${name} is hidden`);
+    // Depending on the SDK version, a hidden tool is a protocol error or an isError result. Either way it doesn't run.
+    const refused = await customer.callTool({ name: 'appointment_requests', arguments: {} }).then((result) => result.isError === true, () => true);
+    assert.ok(refused, 'the customer token cannot call appointment_requests');
+  });
+
   it('shows the ops prompt only to the ops token', async () => {
-    const opsPrompts = (await ops.listPrompts()).prompts.map((prompt) => prompt.name);
-    assert.ok(opsPrompts.includes('send_pending_confirmations'));
-    const customerPrompts = await customer.listPrompts().catch(() => ({ prompts: [] }));
-    assert.ok(!customerPrompts.prompts.some((prompt) => prompt.name === 'send_pending_confirmations'));
+    assert.ok((await promptNames(ops)).includes('send_pending_confirmations'));
+    assert.ok(!(await promptNames(customer)).includes('send_pending_confirmations'));
+    assert.ok(!(await promptNames(staff)).includes('send_pending_confirmations'));
   });
 
   it('answers the demo question through the catalog tools', async () => {
@@ -4812,6 +6365,17 @@ describe('Maison over /mcp', () => {
     assert.equal(errorOf(mine).code, 'not_signed_in');
   });
 
+  it('lets the staff token review requests with customers masked, and refuses unknown references', async () => {
+    const requests = await staff.callTool({ name: 'appointment_requests', arguments: { status: 'all' } });
+    assert.ok(!requests.isError, JSON.stringify(requests.content));
+    assert.ok(Array.isArray(requests.structuredContent.appointments));
+    for (const appointment of requests.structuredContent.appointments) {
+      assert.match(appointment.customer, /^(line:U[0-9a-f]{3}…[0-9a-f]{2}|unknown)$/);
+    }
+    const unknown = await staff.callTool({ name: 'confirm_appointment', arguments: { reference: 'APT-0000' } });
+    assert.equal(errorOf(unknown).code, 'not_found');
+  });
+
   it('lets the ops token list and record, and refuses unknown references', async () => {
     const pending = await ops.callTool({ name: 'pending_confirmations', arguments: {} });
     assert.ok(!pending.isError, JSON.stringify(pending.content));
@@ -4822,45 +6386,38 @@ describe('Maison over /mcp', () => {
 });
 ```
 
-- [ ] **Step 4: Run the smoke tests against LaunchPad**
-
-LaunchPad's dev server needs `MAISON_LIFF_URL` set, or `pending_confirmations` answers `not_configured`. Local development uses the app's local URL. Add it if it's missing, then restart Strapi:
-
-```bash
-cd /Users/paul/work/launchpad-fork-latest/strapi
-grep -q '^MAISON_LIFF_URL=' .env || echo 'MAISON_LIFF_URL=http://localhost:3003' >> .env
-kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
-```
-
-When `/_health` answers `204`:
-
-```bash
-cd /Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp
-node --env-file=/Users/paul/work/launchpad-fork-latest/strapi/.env scripts/mcp-dev-tokens.mjs
-npm run test:mcp
-```
-
-Expected: the script prints two lines without any token, and 6 smoke tests pass.
-
-- [ ] **Step 5: Rewrite `README.md`**
+- [ ] **Step 4: Rewrite `README.md`**
 
 ````markdown
 # Maison: a luxury house's catalog over Strapi MCP
 
-A Strapi 5 plugin that shows one content model serving people and AI agents through Strapi's built-in MCP server. It adds a fictional luxury house, "Maison": collections, products, boutiques and stock. Signed-in customers can request boutique visits, and staff confirm them.
+A Strapi 5 plugin that shows one content model serving people and AI agents. It adds a fictional luxury house, "Maison": collections, products, boutiques and stock. Signed-in customers can request boutique visits, and staff review and confirm them.
 
-- **Eight MCP tools and one MCP prompt** on Strapi's `/mcp`, each gated by a permission you grant per token
-- **A human gate:** agents can request appointments, but only staff can confirm them, by publishing
+- **Ten MCP tools and one MCP prompt** on Strapi's `/mcp`, each gated by a permission you grant per token
+- **The same tools in the admin's AI chat**, through [strapi-plugin-tanstack-ai](https://github.com/PaulBratslavsky/strapi-plugin-tanstack-ai) 1.6
+- **A human gate:** agents can request appointments, but only staff confirm them
 - **Customer identity comes from sign-in, never from the model**, through [strapi-oauth-mcp-manager](https://github.com/PaulBratslavsky/strapi-oauth-mcp-manager) 1.1 and LINE
-- **Demo data** in Japanese and English, loaded from the admin panel
+- **A live requests board and demo data** in the admin panel, with content in Japanese and English
 
 Maison is fictional. The plugin uses no real brand's names, products or images.
+
+## Four surfaces, one set of services
+
+| Surface | Who uses it | What decides access |
+|---|---|---|
+| MCP tools on `/mcp` | The customer app, its AI concierge, an ops agent in Claude Desktop | The admin token's Maison permissions |
+| The admin's AI chat | Staff, through strapi-plugin-tanstack-ai | The admin's role, tool by tool |
+| The Maison admin page | Staff | The admin's role |
+| The Content Manager | Staff | Content Manager permissions |
+
+Every surface calls the same services, so it gets the same answers. Confirming a request is one act wherever it happens: the `confirm_appointment` tool, the board's **Confirm** button and **Publish** in the Content Manager all publish the appointment. None of them messages the customer. An ops agent sends the LINE confirmation afterwards.
 
 ## Requirements
 
 - Strapi `^5.55.1`, with the MCP server enabled: `mcp: { enabled: true }` in `config/server.ts`
 - The i18n plugin, which is on by default
 - For the customer tools, strapi-oauth-mcp-manager 1.1 with LINE sign-in configured. Without it, those tools answer `not_signed_in`.
+- For the admin chat, strapi-plugin-tanstack-ai 1.6 with its chat configured. Maison needs no setup for it: the chat finds Maison's tools by itself.
 
 ## Install for local development
 
@@ -4890,18 +6447,18 @@ export default ({ env }) => ({
 });
 ```
 
-Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog**.
+Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog** under **Demo data**.
 
 ## Configuration
 
 | Key | Default | Purpose |
 |---|---|---|
 | `liffUrl` | `null` | Base of the links in LINE confirmations, e.g. `https://liff.line.me/<LIFF ID>`. Use `http://localhost:<port>` for local development. Until it's set, `pending_confirmations` answers `not_configured`. |
-| `timezone` | `Asia/Tokyo` | Opening-hours checks and the times in messages |
+| `timezone` | `Asia/Tokyo` | Opening-hours checks, the times in messages, and the day of the `date` filter |
 | `defaultLocale` | `ja` | Content language when a tool call doesn't pass `locale` (`ja` or `en`) |
 | `maxOpenRequestsPerCustomer` | `3` | Unconfirmed future requests a customer may have |
 | `houseName` | `{ ja: 'メゾン', en: 'Maison' }` | Header of the LINE confirmation |
-| `disabledTools` | `[]` | Tool names not to register |
+| `disabledTools` | `[]` | Tool names to leave out of MCP and the admin chat |
 
 ## Tools
 
@@ -4913,19 +6470,38 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 | `find_boutiques` | MCP: browse the catalog | Boutiques, opening hours, open on a date, stock for chosen products |
 | `request_appointment` | MCP: request and view own appointments | Creates a **draft** visit request for the signed-in customer |
 | `my_appointments` | MCP: request and view own appointments | The signed-in customer's own requests and confirmations |
+| `appointment_requests` | MCP: review appointment requests | Requests for staff, by default the ones still waiting. Customers are masked. |
+| `confirm_appointment` | MCP: confirm appointment requests | Confirms a request by publishing it. It sends nothing. |
 | `pending_confirmations` | MCP: send appointment confirmations | Confirmed visits not yet sent, each with a ready LINE flex message |
 | `record_confirmation` | MCP: send appointment confirmations | Records whether a LINE confirmation was delivered |
 
-The **`send_pending_confirmations` prompt** tells an ops agent how to deliver confirmations with [LINE Bot MCP](https://github.com/line/line-bot-mcp-server). It checks that each customer is reachable (`get_profile`) before pushing, because LINE's push API answers 200 even when it can't deliver.
+The **`send_pending_confirmations` prompt** tells an ops agent how to deliver confirmations with [LINE Bot MCP](https://github.com/line/line-bot-mcp-server). It checks that each customer is reachable (`get_profile`) before pushing, because LINE's push API answers 200 even when it can't deliver. The prompt drives both `pending_confirmations` and `record_confirmation`, so disabling either one in `disabledTools` also drops the prompt.
 
 **Errors don't throw.** They come back as `isError` results whose text is `{"error":{"code","message","hint"}}`. The codes are `not_signed_in`, `not_found`, `invalid_input`, `boutique_closed`, `in_the_past`, `too_many_open_requests`, `not_published` and `not_configured`. The hint says what to do next.
 
+## The admin chat
+
+strapi-plugin-tanstack-ai 1.6 finds Maison's `ai-tools` service and offers seven of its tools as `maison__<name>`:
+- the four catalog tools
+- `appointment_requests` and `confirm_appointment`
+- the read-only `pending_confirmations`
+
+Each tool is offered only to admins whose role holds its permission. The customer tools are left out, because a chat has an admin rather than a LINE customer. `record_confirmation` is left out because it only follows a LINE push.
+
+## The admin page
+
+**Maison** in the admin menu is shown to admins with "MCP: review appointment requests" or "Load and reset demo data":
+- **Appointment requests:** a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead.
+- **Demo data:** **Load demo catalog** and **Reset demo appointments**.
+
 ## Tokens
 
-Strapi's `/mcp` only accepts **admin** API tokens. Create them under **Settings → API Tokens** and grant only the Maison permissions a caller needs:
+Strapi's `/mcp` only accepts **admin** API tokens. Create them under **Settings → Administration Panel → Admin Tokens** and grant only the Maison permissions a caller needs:
 - **Customer token:** "MCP: browse the catalog" and "MCP: request and view own appointments". Map it to the LINE client in oauth-mcp-manager. Every customer session runs with this token's permissions, so keep it narrow.
+- **Staff token:** "MCP: browse the catalog", "MCP: review appointment requests" and "MCP: confirm appointment requests", for an agent that works for staff.
 - **Ops token:** only "MCP: send appointment confirmations".
-- **Demo managers:** "Load and reset demo data" is an ordinary admin role permission.
+
+The same permissions on an **admin role** decide what staff see in the chat and on the Maison page. "Load and reset demo data" is an ordinary admin role permission.
 
 ## Customer identity
 
@@ -4935,18 +6511,18 @@ A tool never takes the customer as an argument. Customer tools pass the caller's
 strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(authorization); // 'line:U…' or null
 ```
 
-Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager.
+Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager. Staff tools and the board show customers masked, as in `line:U4af…88`, and never the full LINE user ID.
 
 ## Run the ops agent
 
-Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Messaging API channel access token. Then run the `send_pending_confirmations` prompt.
+Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Messaging API channel access token. Then run the `send_pending_confirmations` prompt. The URL below is LaunchPad's dev server; Strapi's default port is 1337.
 
 ```json
 {
   "mcpServers": {
     "maison": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:1337/mcp", "--header", "Authorization: Bearer ${MAISON_OPS_TOKEN}"],
+      "args": ["-y", "mcp-remote", "http://localhost:1338/mcp", "--header", "Authorization: Bearer ${MAISON_OPS_TOKEN}"],
       "env": { "MAISON_OPS_TOKEN": "<ops token>" }
     },
     "line-bot": {
@@ -4964,7 +6540,7 @@ Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Mes
 - **Your own tools:** register them in your app's `register()`, reusing the plugin's services:
   - `strapi.plugin('maison').service('identity').getCustomerSubject(extra)` for the signed-in customer
   - `service('errors').toolError(code, message, hint)` for errors in the same shape
-  - `service('catalog')` and `service('appointments')` for the same logic the tools use
+  - `service('catalog')` and `service('appointments')` for the same logic the tools use, including `listRequests` and `confirm`
 - **Fewer tools:** list them in `disabledTools`.
 
 ## Development
@@ -4982,38 +6558,67 @@ The plugin runs from `dist/`, so rebuild (`npm run link`) and restart Strapi aft
 
 The repo has no license yet, so the README doesn't name one. Choosing one is the owner's call.
 
-- [ ] **Step 6: Run everything once more**
+- [ ] **Step 5: Run everything that doesn't need the dev server**
 
 ```bash
 npx vitest run
 npm run test:ts:back && npm run test:ts:front
 npm run build && npm run verify
+npm run link
 STRAPI_APP_DIR=/Users/paul/work/launchpad-fork-latest/strapi npm run test:integration
-npm run test:mcp
 ```
 
 Expected: every command passes. Integration tests use their own SQLite files, so they can run while the dev server is up.
 
-- [ ] **Step 7: Commit, push and open the pull request**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add package.json package-lock.json .gitignore scripts/mcp-dev-tokens.mjs test/mcp/tools.test.mjs README.md
 git commit -m "test: add MCP smoke tests and rewrite the README for Maison"
+```
+
+- [ ] **Step 7: Run the smoke tests against LaunchPad (controller only)**
+
+The implementer stops after Step 6. The controller restarts the dev server, because the implementer never does.
+
+LaunchPad's dev server needs `MAISON_LIFF_URL` set, or `pending_confirmations` answers `not_configured`. Local development uses the app's local URL. Add it if it's missing, then restart Strapi with the build that Step 5 pushed:
+
+```bash
+cd /Users/paul/work/launchpad-fork-latest/strapi
+grep -q '^MAISON_LIFF_URL=' .env || echo 'MAISON_LIFF_URL=http://localhost:3003' >> .env
+kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
+```
+
+When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204`:
+
+```bash
+cd /Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp
+node --env-file=/Users/paul/work/launchpad-fork-latest/strapi/.env scripts/mcp-dev-tokens.mjs
+npm run test:mcp
+```
+
+Expected: the script prints two lines without any token, and 8 smoke tests pass.
+
+- [ ] **Step 8: Push and open the pull request (controller only)**
+
+```bash
 git push -u origin feat/maison-plugin
 gh pr create --base main --title "feat: Maison plugin (catalog, appointments and LINE confirmations over Strapi MCP)" --body-file - <<'BODY'
 Replaces the store-analytics starting point with the Maison plugin described in `docs/superpowers/specs/2026-09-29-maison-plugin-design.md`.
 
 - Six content types (collection, product, boutique, stock level, appointment, notification) with shared validation for the admin and the tools
-- Eight MCP tools and the `send_pending_confirmations` prompt, each gated by a plugin permission
-- Customer identity through oauth-mcp-manager's `resolveSubject`; a plain admin token is never treated as a customer
-- Bilingual seed data with generated images, and an admin page to load or reset the demo
+- Ten MCP tools and the `send_pending_confirmations` prompt, each gated by a plugin permission
+- Staff review and confirmation on four surfaces: the MCP tools, the in-admin chat of strapi-plugin-tanstack-ai (through an `ai-tools` service built from the same tool definitions), a live requests board in the admin, and Publish in the Content Manager
+- Customer identity through oauth-mcp-manager's `resolveSubject`; a plain admin token is never treated as a customer, and staff see customers masked
+- Bilingual seed data with generated images, and admin buttons to load or reset the demo
 
 Worth knowing:
 - The notification's delivery field is `outcome`, because `status` is reserved in Strapi 5. Tool inputs and outputs still say `status`.
 - Tools use a local `defineTool` typed with Strapi's builder types, because `@strapi/strapi` can't be imported by vitest.
 - `liffUrl` also accepts `http://localhost` for local development.
+- `confirm_appointment` only publishes. The LINE confirmation still goes out through the ops agent.
 
-Tests: vitest unit tests; integration tests that boot LaunchPad's Strapi against throwaway SQLite files; MCP smoke tests over HTTP against the running dev server; a contract test of the LINE flex message against LINE Bot MCP 0.5.0's schema.
+Tests: vitest unit tests; integration tests that boot LaunchPad's Strapi against throwaway SQLite files; MCP smoke tests over HTTP against the running dev server with customer, staff and ops tokens; a contract test of the LINE flex message against LINE Bot MCP 0.5.0's schema.
 BODY
 ```
 
