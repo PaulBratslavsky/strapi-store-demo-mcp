@@ -61,6 +61,15 @@ describe('request_appointment', () => {
     expect(input.safeParse({ ...args, productSlugs: ['a', 'b', 'c', 'd', 'e', 'f'] }).success).toBe(false);
     expect(input.safeParse({ ...args, note: 'x'.repeat(501) }).success).toBe(false);
   });
+
+  it('rejects a day that is not on the calendar, or the hour 24, instead of booking another day', () => {
+    const input = requestAppointmentTool.resolveInputSchema!(context);
+    // new Date() would turn 31 September into 1 October, and T24:00 into midnight of the next day.
+    const september31 = input.safeParse({ ...args, requestedFor: '2026-09-31T14:00:00+09:00' });
+    expect(september31.success).toBe(false);
+    expect(september31.error?.issues[0]).toMatchObject({ path: ['requestedFor'], message: 'Not a real calendar date.' });
+    expect(input.safeParse({ ...args, requestedFor: '2026-10-10T24:00:00+09:00' }).success).toBe(false);
+  });
 });
 
 describe('my_appointments', () => {

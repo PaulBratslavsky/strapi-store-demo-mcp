@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkOpenAt,
   hoursForDate,
+  isRealIsoDate,
   validateOpeningHours,
   zonedParts,
   type OpeningHoursEntry,
@@ -74,6 +75,25 @@ describe('checkOpenAt', () => {
     const result = checkOpenAt(osaka, new Date('2026-10-05T23:30:00Z'), TOKYO);
     expect(result.weekday).toBe('tue');
     expect(result.open).toBe(false);
+  });
+});
+
+describe('isRealIsoDate', () => {
+  it.each(['2026-10-10', '2028-02-29', '2026-09-30', '2026-12-31'])('accepts %s', (value) => {
+    expect(isRealIsoDate(value)).toBe(true);
+  });
+
+  it.each([
+    ['29 February in a common year', '2026-02-29'],
+    ['31 September', '2026-09-31'],
+    ['31 February', '2026-02-31'],
+    ['month 13', '2026-13-01'],
+    ['day 00', '2026-10-00'],
+    ['a one-digit day', '2026-10-1'],
+    ['a date and time', '2026-10-10T00:00:00Z'],
+    ['words', 'next Saturday'],
+  ])('rejects %s', (_label, value) => {
+    expect(isRealIsoDate(value)).toBe(false);
   });
 });
 

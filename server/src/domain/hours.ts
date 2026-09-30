@@ -11,6 +11,13 @@ export interface OpeningHoursEntry {
 export const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** Whether a YYYY-MM-DD is on the calendar. `new Date()` would quietly turn 2026-09-31 into 1 October. */
+export const isRealIsoDate = (value: string): boolean => {
+  if (!ISO_DATE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
 export const toMinutes = (hhmm: string): number => {
   const [hours, minutes] = hhmm.split(':').map(Number);
   return hours * 60 + minutes;

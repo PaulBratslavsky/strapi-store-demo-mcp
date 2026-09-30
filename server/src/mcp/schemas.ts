@@ -1,16 +1,23 @@
 import { z } from '@strapi/utils';
 
 import { CATEGORIES, LOCALES, OCCASIONS } from '../constants';
-import { ISO_DATE } from '../domain/hours';
+import { ISO_DATE, isRealIsoDate } from '../domain/hours';
 
 const ISO_DATETIME_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+const NOT_A_REAL_DATE = 'Not a real calendar date.';
 
 export const localeInput = z.enum(LOCALES).optional().describe('Content language: "ja" (default) or "en".');
 export const slugInput = z.string().min(1).max(120).regex(/^[a-z0-9-]+$/, 'Use a slug like "weekender-50".');
-export const isoDateInput = z.string().regex(ISO_DATE, 'Use YYYY-MM-DD.');
+// A wrong format aborts the checks that follow, so it gets one message, not a calendar complaint as well.
+export const isoDateInput = z
+  .string()
+  .regex(ISO_DATE, { error: 'Use YYYY-MM-DD.', abort: true })
+  .refine(isRealIsoDate, NOT_A_REAL_DATE);
 export const isoDateTimeInput = z
   .string()
-  .regex(ISO_DATETIME_WITH_OFFSET, 'Use ISO 8601 with a time zone, e.g. 2026-10-10T14:00:00+09:00.')
+  .regex(ISO_DATETIME_WITH_OFFSET, { error: 'Use ISO 8601 with a time zone, e.g. 2026-10-10T14:00:00+09:00.', abort: true })
+  .refine((value) => isRealIsoDate(value.slice(0, 10)), NOT_A_REAL_DATE)
+  .refine((value) => Number(value.slice(11, 13)) <= 23, 'Not a real time of day: the hour must be 00 to 23.')
   .refine((value) => !Number.isNaN(Date.parse(value)), 'Not a real date and time.');
 export const categoryInput = z.enum(CATEGORIES);
 export const occasionInput = z.enum(OCCASIONS);

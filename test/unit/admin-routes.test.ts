@@ -45,7 +45,7 @@ describe('appointments controller', () => {
 
   it('answers bad filters with 400 invalid_input and never calls the service', async () => {
     const listRequests = vi.fn();
-    for (const query of [{ status: 'pending' }, { limit: '0' }, { limit: 'ten' }, { date: '10/10/2026' }]) {
+    for (const query of [{ status: 'pending' }, { limit: '0' }, { limit: 'ten' }, { date: '10/10/2026' }, { date: '2026-09-31' }]) {
       const ctx = fakeCtx({ query });
       await controllerWith({ listRequests }).list(ctx);
       expect(ctx.status, JSON.stringify(query)).toBe(400);

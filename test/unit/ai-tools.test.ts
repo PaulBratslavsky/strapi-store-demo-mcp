@@ -42,7 +42,7 @@ describe('ai-tools for the in-admin chat', () => {
   });
 
   it('runs the MCP handler and returns its structured result', async () => {
-    const searchProducts = vi.fn(async () => ({ total: 0, products: [] }));
+    const searchProducts = vi.fn(async () => ({ ok: true, value: { total: 0, products: [] } }));
     const tool = toolNamed(chatTools({ catalog: { searchProducts } }), 'search_products');
     await expect(tool.execute({ occasion: 'travel', locale: 'en' })).resolves.toEqual({ locale: 'en', total: 0, products: [] });
     expect(searchProducts).toHaveBeenCalledWith('en', { occasion: 'travel', locale: 'en' });

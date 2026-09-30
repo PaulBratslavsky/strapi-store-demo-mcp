@@ -9,8 +9,17 @@ const context = { userAbility: {} as any, user: { id: 1 } };
 const run = (tool: any, catalog: Record<string, unknown>, args: Record<string, unknown>, config = {}) =>
   tool.createHandler(fakeStrapi({ services: { catalog }, config }), context)({ args, extra: {} });
 const matchesOutput = (tool: any, result: any) => tool.resolveOutputSchema(context).parse(result.structuredContent);
+const errorOf = (result: any) => JSON.parse(result.content[0].text).error;
 
 const card = { slug: 'weekender-50', name: 'Weekender 50', category: 'travel', priceJpy: 385000, imageUrl: null, occasions: ['travel'], personalizable: true, inStockAt: ['ginza'] };
+
+describe('catalog tool descriptions', () => {
+  it("each say what the tool won't do", () => {
+    expect(browseCollectionsTool.description).toMatch(/It doesn't list products or prices\./);
+    expect(viewProductTool.description).toMatch(/Never invent details the product doesn't have\./);
+    expect(findBoutiquesTool.description).toMatch(/It doesn't book anything\./);
+  });
+});
 
 describe('browse_collections', () => {
   it('uses the configured default locale and returns schema-valid output', async () => {
@@ -24,10 +33,11 @@ describe('browse_collections', () => {
 
 describe('search_products', () => {
   it('passes filters through and returns schema-valid output', async () => {
-    const searchProducts = vi.fn(async () => ({ total: 1, products: [card] }));
+    const searchProducts = vi.fn(async () => ({ ok: true, value: { total: 1, products: [card] } }));
     const args = { occasion: 'travel', maxPriceJpy: 400000, inStockAt: 'ginza', locale: 'en' };
     const result = await run(searchProductsTool, { searchProducts }, args);
     expect(searchProducts).toHaveBeenCalledWith('en', args);
+    expect(result.structuredContent).toEqual({ locale: 'en', total: 1, products: [card] });
     expect(() => matchesOutput(searchProductsTool, result)).not.toThrow();
   });
 
@@ -35,6 +45,17 @@ describe('search_products', () => {
     const result = await run(searchProductsTool, { searchProducts: vi.fn() }, { minPriceJpy: 500000, maxPriceJpy: 100000 });
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0].text).error.code).toBe('invalid_input');
+  });
+
+  it.each([
+    ['boutique', { inStockAt: 'kyoto' }, 'No boutique "kyoto".', 'Call find_boutiques to find valid boutique slugs.'],
+    ['collection', { collection: 'no-such-line' }, 'No collection "no-such-line".', 'Call browse_collections to find valid collection slugs.'],
+  ])('answers an unknown %s with not_found and its hint, never an empty result', async (_label, args, message, hint) => {
+    const searchProducts = vi.fn(async () => ({ ok: false, code: 'not_found', message, hint }));
+    const result = await run(searchProductsTool, { searchProducts }, args);
+    expect(result.isError).toBe(true);
+    expect(errorOf(result)).toEqual({ code: 'not_found', message, hint });
+    expect(result.structuredContent).toBeUndefined();
   });
 });
 
@@ -67,10 +88,26 @@ describe('find_boutiques', () => {
       slug: 'osaka', name: '大阪心斎橋店', city: '大阪', address: '…', hours: [{ weekday: 'mon', opens: '11:00', closes: '20:00' }],
       openOnDate: false, hoursOnDate: null, stock: [{ product: 'weekender-50', quantity: 0 }],
     };
-    const getBoutiques = vi.fn(async () => [boutique]);
+    const getBoutiques = vi.fn(async () => ({ ok: true, value: [boutique] }));
     const result = await run(findBoutiquesTool, { getBoutiques }, { date: '2026-10-06', productSlugs: ['weekender-50'] });
     expect(getBoutiques).toHaveBeenCalledWith('ja', { date: '2026-10-06', productSlugs: ['weekender-50'] });
-    expect(result.structuredContent.date).toBe('2026-10-06');
+    expect(result.structuredContent).toEqual({ date: '2026-10-06', boutiques: [boutique] });
     expect(() => matchesOutput(findBoutiquesTool, result)).not.toThrow();
+  });
+
+  it('answers an unknown product with not_found and a search_products hint, never zero stock', async () => {
+    const message = 'No published product "no-such-piece".';
+    const hint = 'Call search_products to find valid product slugs.';
+    const getBoutiques = vi.fn(async () => ({ ok: false, code: 'not_found', message, hint }));
+    const result = await run(findBoutiquesTool, { getBoutiques }, { productSlugs: ['weekender-50', 'no-such-piece'] });
+    expect(result.isError).toBe(true);
+    expect(errorOf(result)).toEqual({ code: 'not_found', message, hint });
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it('rejects a date that is not on the calendar instead of answering for another day', () => {
+    const input = findBoutiquesTool.resolveInputSchema!(context);
+    expect(input.safeParse({ date: '2026-10-06' }).success).toBe(true);
+    expect(input.safeParse({ date: '2026-02-31' }).success, '31 February would answer for 3 March').toBe(false);
   });
 });

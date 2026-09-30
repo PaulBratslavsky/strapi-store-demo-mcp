@@ -2,7 +2,7 @@ import { z } from '@strapi/utils';
 
 import { getConfig } from '../../config';
 import { ACTION } from '../../constants';
-import { toolSuccess } from '../../domain/tool-result';
+import { toolError, toolSuccess } from '../../domain/tool-result';
 import { defineTool } from '../define';
 import { isoDateInput, localeInput, slugInput } from '../schemas';
 
@@ -16,7 +16,7 @@ export const findBoutiquesTool = defineTool({
   name: 'find_boutiques',
   title: 'Get boutiques',
   description:
-    'Lists boutiques with opening hours, whether each is open on a given date, and stock for up to five products. Use it before requesting an appointment.',
+    "Lists boutiques with opening hours, whether each is open on a given date, and stock for up to five products. Use it before requesting an appointment. It doesn't book anything.",
   auth: { policies: [{ action: ACTION.catalogRead }] },
   resolveInputSchema: () => input,
   resolveOutputSchema: () =>
@@ -37,10 +37,11 @@ export const findBoutiquesTool = defineTool({
     }),
   createHandler: (strapi) => async ({ args }) => {
     const locale = args.locale ?? getConfig(strapi).defaultLocale;
-    const boutiques = await strapi
+    const result = await strapi
       .plugin('maison')
       .service('catalog')
       .getBoutiques(locale, { date: args.date, productSlugs: args.productSlugs });
-    return toolSuccess({ date: args.date ?? null, boutiques });
+    if (!result.ok) return toolError(result.code, result.message, result.hint);
+    return toolSuccess({ date: args.date ?? null, boutiques: result.value });
   },
 });

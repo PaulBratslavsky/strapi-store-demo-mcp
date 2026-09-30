@@ -33,6 +33,7 @@ export const searchProductsTool = defineTool({
     }
     const locale = args.locale ?? getConfig(strapi).defaultLocale;
     const result = await strapi.plugin('maison').service('catalog').searchProducts(locale, args);
-    return toolSuccess({ locale, ...result });
+    if (!result.ok) return toolError(result.code, result.message, result.hint);
+    return toolSuccess({ locale, ...result.value });
   },
 });

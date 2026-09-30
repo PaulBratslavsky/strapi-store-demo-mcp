@@ -10,7 +10,7 @@ export const browseCollectionsTool = defineTool({
   name: 'browse_collections',
   title: 'Browse collections',
   description:
-    "Lists the house's published collections with a short story and product count. Start here when a customer wants to browse; then call search_products with a collection slug.",
+    "Lists the house's published collections with a short story and product count. Start here when a customer wants to browse; then call search_products with a collection slug. It doesn't list products or prices.",
   auth: { policies: [{ action: ACTION.catalogRead }] },
   resolveInputSchema: () => z.object({ locale: localeInput }),
   resolveOutputSchema: () =>

@@ -3,12 +3,24 @@ import type { Core } from '@strapi/strapi';
 import { getConfig } from '../config';
 import { UID, type Locale } from '../constants';
 import { hoursForDate, validateOpeningHours, type OpeningHoursEntry } from '../domain/hours';
+import { failure, type ServiceResult } from '../domain/service-result';
 import { blocksToPlainText, teaser } from '../domain/text';
 import { absoluteUrl } from '../domain/url';
 
 type Doc = Record<string, any>;
 type StockEntry = { boutique: string; quantity: number };
 const LIMIT = 200;
+
+export interface BoutiqueView {
+  slug: string;
+  name: string;
+  city: string;
+  address: string;
+  hours: OpeningHoursEntry[];
+  openOnDate: boolean | null;
+  hoursOnDate: { opens: string; closes: string } | null;
+  stock: Array<{ product: string; quantity: number }>;
+}
 
 export interface ProductCard {
   slug: string;
@@ -63,6 +75,10 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
   const boutiquesBySlug = async (locale: Locale) =>
     new Map((await findPublished(UID.boutique, locale)).map((b) => [b.slug as string, b]));
 
+  /** The slugs among `slugs` that a read in `locale` can find: published, in `locale` or the fallback locale. */
+  const publishedSlugs = async (uid: string, locale: Locale, slugs: string[]): Promise<Set<string>> =>
+    new Set((await findPublished(uid, locale, { filters: { slug: { $in: slugs } }, fields: ['slug'] })).map((doc) => doc.slug as string));
+
   const toCard = (product: Doc, stock: StockEntry[] | undefined, boutiques: Map<string, Doc>): ProductCard => ({
     slug: product.slug,
     name: product.name,
@@ -89,7 +105,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       }));
     },
 
-    async searchProducts(locale: Locale, filters: SearchFilters): Promise<{ total: number; products: ProductCard[] }> {
+    /** An unknown boutique or collection is not_found, never an empty result that reads as "nothing matches". */
+    async searchProducts(locale: Locale, filters: SearchFilters): Promise<ServiceResult<{ total: number; products: ProductCard[] }>> {
+      const boutiques = await boutiquesBySlug(locale);
+      if (filters.inStockAt && !boutiques.has(filters.inStockAt)) {
+        return failure('not_found', `No boutique "${filters.inStockAt}".`, 'Call find_boutiques to find valid boutique slugs.');
+      }
+      if (filters.collection && !(await publishedSlugs(UID.collection, locale, [filters.collection])).has(filters.collection)) {
+        return failure('not_found', `No collection "${filters.collection}".`, 'Call browse_collections to find valid collection slugs.');
+      }
+
       const where: Doc = {};
       if (filters.category) where.category = { $eq: filters.category };
       if (filters.collection) where.collection = { slug: { $eq: filters.collection } };
@@ -100,10 +125,9 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           ...(filters.maxPriceJpy !== undefined ? { $lte: filters.maxPriceJpy } : {}),
         };
       }
-      const [products, stock, boutiques] = await Promise.all([
+      const [products, stock] = await Promise.all([
         findPublished(UID.product, locale, { filters: where, populate: { images: true } }),
         stockByProduct(),
-        boutiquesBySlug(locale),
       ]);
       const query = filters.query?.trim().toLowerCase();
       // JSON arrays and free text are filtered in memory: the catalog is small and this stays database-agnostic.
@@ -113,7 +137,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         .map((p) => toCard(p, stock.get(p.slug), boutiques));
       if (filters.inStockAt) cards = cards.filter((card) => card.inStockAt.includes(filters.inStockAt as string));
       cards.sort((a, b) => b.priceJpy - a.priceJpy);
-      return { total: cards.length, products: cards.slice(0, filters.limit ?? 8) };
+      return { ok: true, value: { total: cards.length, products: cards.slice(0, filters.limit ?? 8) } };
     },
 
     async getProduct(locale: Locale, slug: string) {
@@ -163,11 +187,20 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       };
     },
 
-    async getBoutiques(locale: Locale, options: { productSlugs?: string[]; date?: string }) {
+    /** A product that doesn't exist or isn't published is not_found, never "0 in stock" at every boutique. */
+    async getBoutiques(locale: Locale, options: { productSlugs?: string[]; date?: string }): Promise<ServiceResult<BoutiqueView[]>> {
       const productSlugs = options.productSlugs ?? [];
+      if (productSlugs.length > 0) {
+        const known = await publishedSlugs(UID.product, locale, productSlugs);
+        const unknown = [...new Set(productSlugs.filter((slug) => !known.has(slug)))].map((slug) => `"${slug}"`);
+        if (unknown.length > 0) {
+          const what = unknown.length === 1 ? 'product' : 'products';
+          return failure('not_found', `No published ${what} ${unknown.join(', ')}.`, 'Call search_products to find valid product slugs.');
+        }
+      }
       const boutiques = await findPublished(UID.boutique, locale, { sort: 'slug:asc' });
       const stock = productSlugs.length > 0 ? await stockByProduct() : new Map<string, StockEntry[]>();
-      return boutiques.map((b) => {
+      const views = boutiques.map((b): BoutiqueView => {
         const parsed = validateOpeningHours(b.openingHours);
         const hours: OpeningHoursEntry[] = parsed.ok ? parsed.hours : [];
         const hoursOnDate = options.date ? hoursForDate(hours, options.date) : null;
@@ -185,6 +218,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           })),
         };
       });
+      return { ok: true, value: views };
     },
   };
 };

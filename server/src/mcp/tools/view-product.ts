@@ -27,7 +27,7 @@ export const viewProductTool = defineTool({
   name: 'view_product',
   title: 'Get product details',
   description:
-    'Full details for one published product: description, craft story, dimensions, personalization options and stock per boutique. Use the slug from search_products.',
+    "Full details for one published product: description, craft story, dimensions, personalization options and stock per boutique. Use the slug from search_products. Never invent details the product doesn't have.",
   auth: { policies: [{ action: ACTION.catalogRead }] },
   resolveInputSchema: () => z.object({ slug: slugInput, locale: localeInput }),
   resolveOutputSchema: () => z.object({ product }),

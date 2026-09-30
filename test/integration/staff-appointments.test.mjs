@@ -69,6 +69,24 @@ describe('staff review and confirmation', () => {
     assert.equal(other.note, 'For my sister');
   });
 
+  it('files a visit under its day in Tokyo, even when it is stored on the day before in UTC', async () => {
+    const ginza = await strapi.documents('plugin::maison.boutique').findFirst({ locale: 'ja', status: 'published', filters: { slug: 'ginza' } });
+    const early = await strapi.documents(APPOINTMENT).create({
+      data: {
+        reference: 'APT-9830', customer: SUBJECT_A, requestedFor: '2026-10-10T08:30:00+09:00',
+        boutique: { documentId: ginza.documentId, locale: 'ja' }, createdVia: 'app',
+      },
+    });
+    try {
+      const stored = await strapi.documents(APPOINTMENT).findOne({ documentId: early.documentId });
+      assert.equal(new Date(stored.requestedFor).toISOString(), '2026-10-09T23:30:00.000Z', 'stored on 9 October in UTC');
+      assert.deepEqual(await references({ date: '2026-10-10' }), ['APT-9830', refs.late], 'listed on 10 October, its day in Tokyo');
+      assert.deepEqual(await references({ date: '2026-10-09' }), [], 'not listed on 9 October');
+    } finally {
+      await strapi.documents(APPOINTMENT).delete({ documentId: early.documentId });
+    }
+  });
+
   it('confirms by publishing, and confirming again changes nothing', async () => {
     const first = await appointments.confirm(refs.late, NOW);
     assert.equal(first.ok, true);
