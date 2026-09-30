@@ -20,11 +20,11 @@ export const ACTION = {
 export const TOOL_NAMES = [
   'browse_collections',
   'search_products',
-  'get_product',
-  'get_boutiques',
+  'view_product',
+  'find_boutiques',
   'request_appointment',
   'my_appointments',
-  'list_pending_confirmations',
+  'pending_confirmations',
   'record_confirmation',
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];

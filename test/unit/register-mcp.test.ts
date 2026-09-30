@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { registerMcp } from '../../server/src/mcp';
+import { TOOL_NAMES } from '../../server/src/constants';
 import { fakeMcp, fakeStrapi } from './fake-strapi';
 
 describe('registerMcp', () => {
@@ -20,8 +21,16 @@ describe('registerMcp', () => {
 
   it('registers every enabled tool and skips the ones in disabledTools', () => {
     const mcp = fakeMcp(true);
-    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['get_boutiques'] } }));
+    registerMcp(fakeStrapi({ mcp, config: { disabledTools: ['find_boutiques'] } }));
     const names = mcp.registerTool.mock.calls.map(([tool]) => tool.name);
-    expect(names).toEqual(['browse_collections', 'search_products', 'get_product']);
+    expect(names).toEqual(['browse_collections', 'search_products', 'view_product']);
+  });
+
+  it('never claims a name Strapi generates for content types', () => {
+    // Content Manager registers list_/get_/create_/update_/delete_/publish_/unpublish_/write_/discard_
+    // tools for every content type in the host app (get_product for api::product.product), and a
+    // duplicate name stops Strapi from booting.
+    const generated = /^(list|get|create|update|delete|publish|unpublish|write|discard)_/;
+    expect(TOOL_NAMES.filter((name) => generated.test(name))).toEqual([]);
   });
 });

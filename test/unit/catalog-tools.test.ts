@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { browseCollectionsTool } from '../../server/src/mcp/tools/browse-collections';
-import { getBoutiquesTool } from '../../server/src/mcp/tools/get-boutiques';
-import { getProductTool } from '../../server/src/mcp/tools/get-product';
+import { findBoutiquesTool } from '../../server/src/mcp/tools/find-boutiques';
+import { viewProductTool } from '../../server/src/mcp/tools/view-product';
 import { searchProductsTool } from '../../server/src/mcp/tools/search-products';
 import { fakeStrapi } from './fake-strapi';
 
@@ -38,9 +38,9 @@ describe('search_products', () => {
   });
 });
 
-describe('get_product', () => {
+describe('view_product', () => {
   it('returns not_found with a recovery hint for an unknown slug', async () => {
-    const result = await run(getProductTool, { getProduct: vi.fn(async () => null) }, { slug: 'nope' });
+    const result = await run(viewProductTool, { getProduct: vi.fn(async () => null) }, { slug: 'nope' });
     const { error } = JSON.parse(result.content[0].text);
     expect(result.isError).toBe(true);
     expect(error.code).toBe('not_found');
@@ -55,22 +55,22 @@ describe('get_product', () => {
       images: [{ url: 'https://cms.example.test/uploads/a.png', alt: 'Weekender 50' }], occasions: ['travel'],
       collection: { slug: 'voyage', name: 'ヴォヤージュ' }, stock: [{ boutique: 'ginza', name: '銀座本店', quantity: 2 }],
     };
-    const result = await run(getProductTool, { getProduct: vi.fn(async () => product) }, { slug: 'weekender-50' });
+    const result = await run(viewProductTool, { getProduct: vi.fn(async () => product) }, { slug: 'weekender-50' });
     expect(result.structuredContent).toEqual({ product });
-    expect(() => matchesOutput(getProductTool, result)).not.toThrow();
+    expect(() => matchesOutput(viewProductTool, result)).not.toThrow();
   });
 });
 
-describe('get_boutiques', () => {
+describe('find_boutiques', () => {
   it('returns schema-valid output with openOnDate', async () => {
     const boutique = {
       slug: 'osaka', name: '大阪心斎橋店', city: '大阪', address: '…', hours: [{ weekday: 'mon', opens: '11:00', closes: '20:00' }],
       openOnDate: false, hoursOnDate: null, stock: [{ product: 'weekender-50', quantity: 0 }],
     };
     const getBoutiques = vi.fn(async () => [boutique]);
-    const result = await run(getBoutiquesTool, { getBoutiques }, { date: '2026-10-06', productSlugs: ['weekender-50'] });
+    const result = await run(findBoutiquesTool, { getBoutiques }, { date: '2026-10-06', productSlugs: ['weekender-50'] });
     expect(getBoutiques).toHaveBeenCalledWith('ja', { date: '2026-10-06', productSlugs: ['weekender-50'] });
     expect(result.structuredContent.date).toBe('2026-10-06');
-    expect(() => matchesOutput(getBoutiquesTool, result)).not.toThrow();
+    expect(() => matchesOutput(findBoutiquesTool, result)).not.toThrow();
   });
 });

@@ -14,7 +14,7 @@ const input = z.object({
   minPriceJpy: z.number().int().min(0).optional(),
   maxPriceJpy: z.number().int().min(0).optional().describe('Budget ceiling in whole yen.'),
   personalizable: z.boolean().optional().describe('Only pieces that can be personalized (initials, stripes, colors).'),
-  inStockAt: slugInput.optional().describe('Boutique slug from get_boutiques: only pieces in stock there now.'),
+  inStockAt: slugInput.optional().describe('Boutique slug from find_boutiques: only pieces in stock there now.'),
   locale: localeInput,
   limit: z.number().int().min(1).max(20).optional().describe('Maximum results, default 8.'),
 });

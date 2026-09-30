@@ -23,8 +23,8 @@ const product = z.object({
   stock: z.array(z.object({ boutique: z.string(), name: z.string(), quantity: z.number() })),
 });
 
-export const getProductTool = defineTool({
-  name: 'get_product',
+export const viewProductTool = defineTool({
+  name: 'view_product',
   title: 'Get product details',
   description:
     'Full details for one published product: description, craft story, dimensions, personalization options and stock per boutique. Use the slug from search_products.',

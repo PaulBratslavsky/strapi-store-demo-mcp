@@ -12,8 +12,8 @@ const input = z.object({
   locale: localeInput,
 });
 
-export const getBoutiquesTool = defineTool({
-  name: 'get_boutiques',
+export const findBoutiquesTool = defineTool({
+  name: 'find_boutiques',
   title: 'Get boutiques',
   description:
     'Lists boutiques with opening hours, whether each is open on a given date, and stock for up to five products. Use it before requesting an appointment.',

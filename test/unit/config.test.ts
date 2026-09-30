@@ -5,7 +5,7 @@ describe('validateConfig', () => {
   it('accepts the defaults and a full valid config', () => {
     expect(() => validateConfig(defaultConfig)).not.toThrow();
     expect(() =>
-      validateConfig({ ...defaultConfig, liffUrl: 'https://liff.line.me/1234567890-AbCdEfGh', disabledTools: ['get_boutiques'] })
+      validateConfig({ ...defaultConfig, liffUrl: 'https://liff.line.me/1234567890-AbCdEfGh', disabledTools: ['find_boutiques'] })
     ).not.toThrow();
   });
 
