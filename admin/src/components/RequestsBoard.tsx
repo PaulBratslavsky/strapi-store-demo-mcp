@@ -17,6 +17,8 @@ import {
 } from '@strapi/design-system';
 import { useFetchClient, useNotification } from '@strapi/strapi/admin';
 
+import { startPolling } from '../poll';
+
 type Status = 'requested' | 'confirmed' | 'all';
 
 /** One row of GET /maison/appointments (StaffAppointmentView on the server). */
@@ -53,25 +55,28 @@ export const RequestsBoard = ({ canConfirm, refreshKey }: { canConfirm: boolean;
   const [appointments, setAppointments] = React.useState<StaffAppointment[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [confirming, setConfirming] = React.useState<string | null>(null);
-  const latestLoad = React.useRef(0);
+  /** The filter on screen, updated the moment staff pick another. A response for any other filter is dropped. */
+  const shownStatus = React.useRef<Status>(status);
 
   const load = React.useCallback(async () => {
-    const id = ++latestLoad.current;
+    const requested = status;
     try {
-      const { data } = await get<{ appointments: StaffAppointment[] }>('/maison/appointments', { params: { status } });
-      if (id !== latestLoad.current) return; // a newer load, e.g. for another filter, has started
-      setAppointments(data.appointments);
+      const { data } = await get<{ appointments?: StaffAppointment[] }>('/maison/appointments', { params: { status: requested } });
+      if (shownStatus.current !== requested) return; // the filter changed while this load was in flight
+      setAppointments(data.appointments ?? []);
       setLoadError(null);
     } catch (error) {
-      if (id === latestLoad.current) setLoadError((error as Error).message);
+      if (shownStatus.current === requested) setLoadError((error as Error).message);
     }
   }, [get, status]);
 
-  React.useEffect(() => {
-    load();
-    const timer = window.setInterval(load, REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [load, refreshKey]);
+  // The next refresh starts only after the last one finished, so a slow server never gets overlapping requests.
+  React.useEffect(() => startPolling(load, REFRESH_MS), [load, refreshKey]);
+
+  const changeStatus = (value: Status) => {
+    shownStatus.current = value;
+    setStatus(value);
+  };
 
   const confirm = async (reference: string) => {
     setConfirming(reference);
@@ -96,11 +101,11 @@ export const RequestsBoard = ({ canConfirm, refreshKey }: { canConfirm: boolean;
             Appointment requests
           </Typography>
           <Typography variant="pi" textColor="neutral600">
-            Refreshes every {REFRESH_MS / 1000} seconds. {loadError ? `Last refresh failed: ${loadError}` : ''}
+            Refreshes every {REFRESH_MS / 1000} seconds. {loadError && appointments !== null ? `Last refresh failed: ${loadError}` : ''}
           </Typography>
         </Flex>
         <Box width="20rem">
-          <SingleSelect aria-label="Status" size="S" value={status} onChange={(value) => setStatus(value as Status)}>
+          <SingleSelect aria-label="Status" size="S" value={status} onChange={(value) => changeStatus(value as Status)}>
             {(Object.keys(STATUS_LABELS) as Status[]).map((key) => (
               <SingleSelectOption key={key} value={key}>
                 {STATUS_LABELS[key]}
@@ -111,7 +116,18 @@ export const RequestsBoard = ({ canConfirm, refreshKey }: { canConfirm: boolean;
       </Flex>
 
       {appointments === null ? (
-        <Typography textColor="neutral600">Loading requests…</Typography>
+        loadError ? (
+          <Box background="danger100" padding={6} hasRadius>
+            <Flex direction="column" alignItems="flex-start" gap={1}>
+              <Typography textColor="danger700">Couldn't load the requests: {loadError}</Typography>
+              <Typography variant="pi" textColor="neutral600">
+                Trying again every {REFRESH_MS / 1000} seconds.
+              </Typography>
+            </Flex>
+          </Box>
+        ) : (
+          <Typography textColor="neutral600">Loading requests…</Typography>
+        )
       ) : appointments.length === 0 ? (
         <Box background="neutral0" padding={6} hasRadius shadow="tableShadow">
           <Typography textColor="neutral600">{EMPTY[status]}</Typography>

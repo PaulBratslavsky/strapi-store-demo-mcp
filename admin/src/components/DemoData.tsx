@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-import { Box, Button, Flex, Typography } from '@strapi/design-system';
+import { Box, Button, Dialog, Flex, Typography } from '@strapi/design-system';
+import { WarningCircle } from '@strapi/icons';
 import { useFetchClient, useNotification } from '@strapi/strapi/admin';
 
 type SeedResult = { created: boolean; collections: number; products: number; boutiques: number; stockLevels: number };
@@ -48,14 +49,32 @@ export const DemoData = ({ onChange }: { onChange: () => void }) => {
           <Button loading={running === 'seed'} disabled={running !== null} onClick={() => run<SeedResult>('seed', describeSeed)}>
             Load demo catalog
           </Button>
-          <Button
-            variant="danger-light"
-            loading={running === 'reset'}
-            disabled={running !== null}
-            onClick={() => run<ResetResult>('reset', describeReset)}
-          >
-            Reset demo appointments
-          </Button>
+          {/* Resetting can't be undone, so it asks first. */}
+          <Dialog.Root>
+            <Dialog.Trigger>
+              <Button variant="danger-light" loading={running === 'reset'} disabled={running !== null}>
+                Reset demo appointments
+              </Button>
+            </Dialog.Trigger>
+            <Dialog.Content>
+              <Dialog.Header>Reset demo appointments?</Dialog.Header>
+              <Dialog.Body icon={<WarningCircle fill="danger600" />}>
+                Deletes every appointment and LINE confirmation record. The catalog stays.
+              </Dialog.Body>
+              <Dialog.Footer>
+                <Dialog.Cancel>
+                  <Button fullWidth variant="tertiary">
+                    Cancel
+                  </Button>
+                </Dialog.Cancel>
+                <Dialog.Action>
+                  <Button fullWidth variant="danger-light" onClick={() => run<ResetResult>('reset', describeReset)}>
+                    Reset
+                  </Button>
+                </Dialog.Action>
+              </Dialog.Footer>
+            </Dialog.Content>
+          </Dialog.Root>
         </Flex>
       </Flex>
     </Box>
