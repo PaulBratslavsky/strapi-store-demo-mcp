@@ -70,14 +70,44 @@ describe('record_confirmation', () => {
 });
 
 describe('send_pending_confirmations prompt', () => {
+  const promptText = async (): Promise<string> => {
+    const result = await (sendPendingConfirmationsPrompt.createHandler(fakeStrapi()) as any)({});
+    return result.messages[0].content.text;
+  };
+  /** The numbered steps. The intro also names every tool, so it says nothing about the order the agent acts in. */
+  const stepsOf = (text: string) => {
+    const start = text.indexOf('1. Call');
+    expect(start, 'the prompt has numbered steps').toBeGreaterThan(-1);
+    return text.slice(start);
+  };
+
   it('is gated on confirmations.send and walks the agent through check, push and record in order', async () => {
     expect(sendPendingConfirmationsPrompt.auth.policies).toEqual([{ action: 'plugin::maison.confirmations.send' }]);
-    const result = await (sendPendingConfirmationsPrompt.createHandler(fakeStrapi()) as any)({});
-    const text: string = result.messages[0].content.text;
-    const order = ['pending_confirmations', 'get_profile', 'push_flex_message', 'record_confirmation'].map((name) => text.indexOf(name));
+    const text = await promptText();
+    const steps = stepsOf(text);
+    // Step 2b records a failure before any push, so the last probe is the "sent" recording, which must follow the push.
+    const order = ['pending_confirmations', 'get_profile', 'push_flex_message', 'record_confirmation with status "sent"'].map((phrase) => steps.indexOf(phrase));
     expect(order.every((index) => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).toMatch(/200/);
     expect(text).toMatch(/not reachable: not a friend or blocked/);
+  });
+
+  it('passes userId explicitly to both LINE calls', async () => {
+    const text = await promptText();
+    const steps = stepsOf(text);
+    expect(steps).toMatch(/get_profile with userId set to (its )?lineUserId/);
+    expect(steps).toMatch(/push_flex_message with userId set to (its )?lineUserId/);
+    expect(steps.match(/userId set to (its )?lineUserId/g)).toHaveLength(2);
+    expect(text).toMatch(/Always pass userId explicitly/);
+  });
+
+  it('keeps get_profile output out of detail and says what to do when recording goes wrong', async () => {
+    const steps = stepsOf(await promptText());
+    expect(steps).toMatch(/push_flex_message's response as detail/);
+    expect(steps).toMatch(/Never put get_profile output in detail/);
+    expect(steps).toMatch(/If recording "sent" fails, retry it/);
+    expect(steps).toMatch(/never push that appointment again/);
+    expect(steps).toMatch(/alreadyRecorded true[^.]*possible duplicate/);
   });
 });

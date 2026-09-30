@@ -30,6 +30,14 @@ describe('registerMcp', () => {
     expect(mcp.registerPrompt.mock.calls.map(([prompt]) => prompt.name)).toEqual(['send_pending_confirmations']);
   });
 
+  it('registers the confirmation prompt only when both tools it drives are enabled', () => {
+    for (const disabledTools of [['record_confirmation'], ['pending_confirmations']]) {
+      const mcp = fakeMcp(true);
+      registerMcp(fakeStrapi({ mcp, config: { disabledTools } }));
+      expect(mcp.registerPrompt, `disabledTools: ${disabledTools}`).not.toHaveBeenCalled();
+    }
+  });
+
   it('never claims a name Strapi generates for content types', () => {
     // Content Manager registers list_/get_/create_/update_/delete_/publish_/unpublish_/write_/discard_
     // tools for every content type in the host app (get_product for api::product.product), and a

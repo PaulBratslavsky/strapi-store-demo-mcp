@@ -30,5 +30,6 @@ export const registerMcp = (strapi: Core.Strapi) => {
   if (enabled('my_appointments')) mcp.registerTool(myAppointmentsTool);
   if (enabled('pending_confirmations')) mcp.registerTool(pendingConfirmationsTool);
   if (enabled('record_confirmation')) mcp.registerTool(recordConfirmationTool);
-  mcp.registerPrompt(sendPendingConfirmationsPrompt);
+  // The prompt walks the agent through both confirmation tools, so it is useless (and misleading) unless both are registered.
+  if (enabled('pending_confirmations') && enabled('record_confirmation')) mcp.registerPrompt(sendPendingConfirmationsPrompt);
 };
