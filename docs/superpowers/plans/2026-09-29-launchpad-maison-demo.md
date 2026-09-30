@@ -41,9 +41,9 @@
   - The concierge route forwards it and adds no credential of its own.
 - **Only call LIFF in the browser,** inside effects or event handlers. `@line/liff` throws during server rendering.
 - **Ports on this machine:**
-  - Strapi runs on 1340, because 1337 is taken. It's started as `PORT=1340 CLIENT_URL=http://localhost:3010 yarn develop` in `strapi/`.
+  - Strapi runs on 1338 and the LaunchPad site on 3001, because 1337 and 3000 are reserved. It's started as `PORT=1338 CLIENT_URL=http://localhost:3001 yarn develop` in `strapi/`.
   - The app runs on 3003, and the mock verify endpoint on 4545.
-  - Commands that need Strapi's URL take `STRAPI_URL=http://localhost:1340`.
+  - Commands that need Strapi's URL take `STRAPI_URL=http://localhost:1338`.
 - **Times:** Asia/Tokyo. The app sends `requestedFor` as `YYYY-MM-DDTHH:MM:00+09:00`.
 - **Model:** `claude-sonnet-5`. With `ANTHROPIC_API_KEY` it goes directly to Anthropic; otherwise the AI Gateway string `'anthropic/claude-sonnet-5'` is used.
 - **AI SDK 7 names:**
@@ -113,7 +113,7 @@ docs/maison-demo/README.md              create: runbook, Claude Desktop, options
 **Interfaces:**
 - Consumes: the built Maison plugin (`strapi-store-demo-mcp`, plugin id `maison`) and `strapi-oauth-mcp-manager` 1.1
 - Produces:
-  - Strapi on `http://localhost:1340` with the Maison tools, LINE token exchange verified against `http://localhost:4545/verify`, and CORS for `http://localhost:3003`
+  - Strapi on `http://localhost:1338` with the Maison tools, LINE token exchange verified against `http://localhost:4545/verify`, and CORS for `http://localhost:3003`
   - env keys `MAISON_DEMO`, `ENCRYPTION_KEY`, `LINE_LOGIN_CHANNEL_ID`, `LINE_VERIFY_URL`, `MAISON_LIFF_URL`, `MAISON_APP_ORIGIN`, `PUBLIC_URL`
 
 - [ ] **Step 1: Branch**
@@ -285,16 +285,16 @@ Expected: `strapi/package.json` has `link:.yalc/…` entries for both. These sta
 - [ ] **Step 6: Restart Strapi and check it**
 
 ```bash
-kill $(lsof -tiTCP:1340 -sTCP:LISTEN) 2>/dev/null
-cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1340 CLIENT_URL=http://localhost:3010 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
+kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null
+cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
 ```
 
-When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1340/_health` prints `204`:
+When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204`:
 
 ```bash
-curl -s http://localhost:1340/.well-known/oauth-authorization-server | grep -o 'token-exchange'
+curl -s http://localhost:1338/.well-known/oauth-authorization-server | grep -o 'token-exchange'
 grep -E "OAuth enabled for /mcp|\[maison\]" /Users/paul/work/launchpad-fork-latest/strapi/.tmp/maison-dev.log | head -5
-curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS http://localhost:1340/mcp -H 'Origin: http://localhost:3003' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization,content-type,mcp-protocol-version'
+curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS http://localhost:1338/mcp -H 'Origin: http://localhost:3003' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization,content-type,mcp-protocol-version'
 ```
 
 Expected:
@@ -337,7 +337,7 @@ git commit -m "feat(strapi): load the Maison demo plugins behind MAISON_DEMO"
 //   2. (re)creates the admin tokens "Maison customer" and "Maison ops"
 //   3. (re)creates the OAuth client "Maison app" (customer sign-in with LINE, mapped to "Maison customer")
 //   4. writes the app's Strapi URL and client ID to liff/.env, and the ops token to strapi/.tmp/maison-ops-token
-// Usage from the repo root: yarn maison:setup   (prefix STRAPI_URL=http://localhost:1340 when Strapi isn't on PORT)
+// Usage from the repo root: yarn maison:setup   (prefix STRAPI_URL=http://localhost:1338 when Strapi isn't on PORT)
 // Never prints a secret.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -434,15 +434,15 @@ In the root `package.json` `scripts`, add:
 ```bash
 cd /Users/paul/work/launchpad-fork-latest
 mkdir -p liff
-STRAPI_URL=http://localhost:1340 yarn maison:setup
-STRAPI_URL=http://localhost:1340 yarn maison:setup
+STRAPI_URL=http://localhost:1338 yarn maison:setup
+STRAPI_URL=http://localhost:1338 yarn maison:setup
 ```
 
 Expected: the first run says it loaded the catalog, or that it was already loaded. Both runs print one client ID and no token. Then check that the second run left exactly one of each:
 
 ```bash
 node --env-file=strapi/.env --input-type=module -e "
-const base = 'http://localhost:1340';
+const base = 'http://localhost:1338';
 const login = await (await fetch(base + '/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: process.env.LOCAL_TEST_ADMIN_EMAIL, password: process.env.LOCAL_TEST_ADMIN_PASSWORD }) })).json();
 const auth = { Authorization: 'Bearer ' + login.data.token };
 const clients = (await (await fetch(base + '/strapi-oauth-mcp-manager/clients', { headers: auth })).json()).data;
@@ -2144,7 +2144,7 @@ yarn test && yarn typecheck && yarn build
 yarn dev
 ```
 
-With Strapi running on 1340, open `http://localhost:3003` in a desktop browser.
+With Strapi running on 1338, open `http://localhost:3003` in a desktop browser.
 
 Expected:
 1. The app sits in a phone frame, and shows "LINEでサインインしています…", then the three collections.
@@ -2871,7 +2871,7 @@ Expected:
 1. Chips appear: `search_products ✓ 5件`, maybe `find_boutiques ✓`. Up to three product cards follow, starting with the Weekender 50.
 2. The reply is short, in keigo, and restates the Ginza Saturday 14:00 visit, asking for a yes.
 3. Tap "はい、お願いします。". A `request_appointment ✓` chip and an appointment card say "ブティックの確認待ち". The reply says the boutique will confirm on LINE, and never says confirmed.
-4. In the Strapi admin (`http://localhost:1340/admin`), under Content Manager → Maison appointment, the new draft shows `createdVia: concierge`.
+4. In the Strapi admin (`http://localhost:1338/admin`), under Content Manager → Maison appointment, the new draft shows `createdVia: concierge`.
 
 If the concierge breaks a rule, fix the instructions in `lib/concierge.ts` and rerun `yarn test`.
 
@@ -2891,7 +2891,7 @@ git commit -m "feat(liff): add the Claude concierge over the customer's MCP sess
 - Create: `liff/playwright.config.ts`, `liff/e2e/global-setup.ts`, `liff/e2e/maison.spec.ts`
 
 **Interfaces:**
-- Consumes: the running Strapi (1340) and app (3003); admin `POST /admin/login` and `POST /maison/demo/reset`
+- Consumes: the running Strapi (1338) and app (3003); admin `POST /admin/login` and `POST /maison/demo/reset`
 - Produces: `yarn test:e2e`
 
 These run against servers you've already started, in mock mode. They cover the sign-in chain, the screens, booking, the closed-day guard, the agent view, and isolation between customers. The concierge is covered by Task 7's contract test, because a live model run isn't deterministic.
@@ -3001,7 +3001,7 @@ The tests run in file order with one worker. The first test leaves the default c
 
 - [ ] **Step 3: Install the browser and run the tests**
 
-With Strapi on 1340, and `yarn dev` running in `liff/`:
+With Strapi on 1338, and `yarn dev` running in `liff/`:
 
 ```bash
 cd /Users/paul/work/launchpad-fork-latest/liff
@@ -3159,7 +3159,7 @@ A **LINE MINI App** is the same app on a MINI App channel, which needs a Japan-r
 
 - [ ] **Step 2: Connect Claude Desktop and check the ops agent**
 
-Paste the ops token from `strapi/.tmp/maison-ops-token` into the Claude Desktop config (Step 1's snippet, with port 1340). Quit and reopen Claude Desktop with ⌘Q. Then:
+Paste the ops token from `strapi/.tmp/maison-ops-token` into the Claude Desktop config (Step 1's snippet, with port 1338). Quit and reopen Claude Desktop with ⌘Q. Then:
 
 1. Book a visit in the app, and publish it in the Strapi admin.
 2. In Claude Desktop, ask: "Which confirmed visits still need a LINE confirmation?"

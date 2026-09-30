@@ -386,15 +386,15 @@ export default ({ env }) => ({
 });
 ```
 
-Then push the new build and restart the dev server (it runs on port 1340 because 1337 is taken):
+Then push the new build and restart the dev server (it runs on port 1338 because 1337 is reserved):
 
 ```bash
 npm run link
 # restart LaunchPad's Strapi if it's running:
-kill $(lsof -tiTCP:1340 -sTCP:LISTEN) 2>/dev/null; cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1340 CLIENT_URL=http://localhost:3010 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
+kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
 ```
 
-Expected: `curl -s -o /dev/null -w '%{http_code}' http://localhost:1340/_health` prints `204` within a minute, and the log has no `Error`.
+Expected: `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204` within a minute, and the log has no `Error`.
 
 - [ ] **Step 12: Commit**
 
@@ -4639,10 +4639,10 @@ Expected: tsc exits 0, the build prints `Build complete!`, and `verify` passes.
 
 ```bash
 npm run link
-kill $(lsof -tiTCP:1340 -sTCP:LISTEN) 2>/dev/null; cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1340 CLIENT_URL=http://localhost:3010 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
+kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; cd /Users/paul/work/launchpad-fork-latest/strapi && PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
 ```
 
-When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1340/_health` prints `204`, open `http://localhost:1340/admin` and sign in as the local test admin. The credentials are `LOCAL_TEST_ADMIN_EMAIL` and `LOCAL_TEST_ADMIN_PASSWORD` in `strapi/.env`; never print or commit them.
+When `curl -s -o /dev/null -w '%{http_code}' http://localhost:1338/_health` prints `204`, open `http://localhost:1338/admin` and sign in as the local test admin. The credentials are `LOCAL_TEST_ADMIN_EMAIL` and `LOCAL_TEST_ADMIN_PASSWORD` in `strapi/.env`; never print or commit them.
 
 Expected:
 1. **"Maison" appears in the main menu** with a crown icon.
@@ -4668,7 +4668,7 @@ These tests call `/mcp` on the running LaunchPad dev server over HTTP, the way C
 - Modify: `package.json` (devDependency `@modelcontextprotocol/sdk`), `.gitignore`, `README.md` (rewrite)
 
 **Interfaces:**
-- Consumes: everything above, running in LaunchPad's Strapi on port 1340
+- Consumes: everything above, running in LaunchPad's Strapi on port 1338
 - Produces: `test/mcp/.tokens.json` (gitignored), with a `customer` and an `ops` admin token
 
 - [ ] **Step 1: Add the MCP client and ignore the token file**
@@ -4686,7 +4686,7 @@ printf '\n# MCP smoke-test tokens (scripts/mcp-dev-tokens.mjs)\ntest/mcp/.tokens
 // Usage: node --env-file=<strapi app>/.env scripts/mcp-dev-tokens.mjs
 import { writeFileSync } from 'node:fs';
 
-const STRAPI_URL = process.env.STRAPI_URL ?? 'http://localhost:1340';
+const STRAPI_URL = process.env.STRAPI_URL ?? 'http://localhost:1338';
 const email = process.env.ADMIN_EMAIL ?? process.env.LOCAL_TEST_ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD ?? process.env.LOCAL_TEST_ADMIN_PASSWORD;
 if (!email || !password) {
@@ -4741,7 +4741,7 @@ import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const STRAPI_URL = process.env.STRAPI_URL ?? 'http://localhost:1340';
+const STRAPI_URL = process.env.STRAPI_URL ?? 'http://localhost:1338';
 const tokens = JSON.parse(readFileSync(new URL('./.tokens.json', import.meta.url), 'utf8'));
 
 const connect = async (token) => {
@@ -4829,7 +4829,7 @@ LaunchPad's dev server needs `MAISON_LIFF_URL` set, or `pending_confirmations` a
 ```bash
 cd /Users/paul/work/launchpad-fork-latest/strapi
 grep -q '^MAISON_LIFF_URL=' .env || echo 'MAISON_LIFF_URL=http://localhost:3003' >> .env
-kill $(lsof -tiTCP:1340 -sTCP:LISTEN) 2>/dev/null; PORT=1340 CLIENT_URL=http://localhost:3010 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
+kill $(lsof -tiTCP:1338 -sTCP:LISTEN) 2>/dev/null; PORT=1338 CLIENT_URL=http://localhost:3001 nohup yarn develop > .tmp/maison-dev.log 2>&1 &
 ```
 
 When `/_health` answers `204`:
