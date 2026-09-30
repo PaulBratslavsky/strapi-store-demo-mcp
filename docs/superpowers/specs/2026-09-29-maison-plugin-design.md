@@ -78,7 +78,7 @@ Publishing an appointment **is** the staff confirmation.
 | Field | Type | Notes |
 |---|---|---|
 | `reference` | string, required, unique | Short and human-readable, for example `APT-4821` |
-| `customer` | string, required, **private** | `line:U` + 32 hex characters. Never in REST responses. |
+| `customer` | string, required, **private** | `line:U` + 32 hex characters. Never in REST responses. Hidden in the Content Manager (`visible: false`), so staff never see it there. |
 | `boutique` | relation, many-to-one → `boutique` | |
 | `products` | relation, many-to-many → `product` | 1–5 |
 | `requestedFor` | datetime, required | |
@@ -181,6 +181,8 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 - **Error codes:** `not_signed_in`, `not_found`, `invalid_input`, `boutique_closed`, `in_the_past`, `too_many_open_requests`, `not_published`, `not_configured`.
 - **Names** never start with `list_`, `get_`, `create_`, `update_`, `delete_`, `publish_`, `unpublish_`, `write_` or `discard_`. Strapi's Content Manager generates tools with those prefixes for every content type in the host app (for example `get_product` for LaunchPad's `api::product.product`), and a duplicate name stops Strapi from booting.
 - **Descriptions** say when to use the tool and what it won't do. For example, `request_appointment`: "Creates a request that a boutique must confirm; never tell the customer it is confirmed."
+- **Dates** must be real calendar dates: `2026-09-31` or `T24:00` answers `invalid_input` instead of rolling into another day. Arguments rejected by the MCP SDK's own schema check come back as plain text ("Input validation error: …"); errors from the tools themselves use the JSON shape above.
+- **Unknown slugs** (product, boutique or collection) answer `not_found` with a hint. They never produce an empty result or zero stock.
 
 ### Catalog: `catalog.read`
 
@@ -250,7 +252,7 @@ Staff tools act as whoever holds the token or admin session. They never take or 
 `pending_confirmations`
 
 - **Input:** `limit?` (1–20, default 10)
-- **Returns:** published appointments with no `sent` notification.
+- **Returns:** upcoming published appointments (`requestedFor` from now on) with no `sent` notification, soonest first. Past visits are never listed, so a customer is never told about a visit that has already happened.
 - **Output:** `{ appointments: [{ reference, lineUserId, boutique: { name, address }, requestedFor, requestedForText, products: [{ name }], previousAttempts, appLink, message: { altText, contents } }] }`
 - `lineUserId` is the subject without `line:`. `requestedForText` is formatted in Japanese, e.g. `10月11日(土) 14:00`. `appLink` is `{liffUrl}/visits/{reference}`. `previousAttempts` is the number of `failed` notifications already recorded for the appointment.
 - If `liffUrl` isn't configured, the tool returns `not_configured` rather than a message with a broken link. Startup also logs a warning.
@@ -325,7 +327,7 @@ Shipped in the package: JSON content plus images under `server/seed/`.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `liffUrl` | required for confirmations | Base of `appLink`, for example `https://liff.line.me/<LIFF ID>`, or `http://localhost:<port>` during local development |
+| `liffUrl` | required for confirmations | Base of `appLink`, for example `https://liff.line.me/<LIFF ID>`, or `http://localhost:<port>` during local development. An empty value counts as unset. |
 | `timezone` | `Asia/Tokyo` | Opening-hours checks and message formatting |
 | `defaultLocale` | `ja` | Default for `locale` inputs |
 | `maxOpenRequestsPerCustomer` | `3` | Abuse limit |
