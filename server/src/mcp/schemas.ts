@@ -25,3 +25,13 @@ export const productCardOutput = z.object({
   personalizable: z.boolean(),
   inStockAt: z.array(z.string()),
 });
+
+export const appointmentOutput = z.object({
+  reference: z.string(),
+  status: z.enum(['requested', 'confirmed']).describe('"requested" until the boutique confirms. Never call a requested visit confirmed.'),
+  boutique: z.object({ slug: z.string(), name: z.string() }),
+  requestedFor: z.string().describe('Visit start in the boutique\'s time zone, ISO 8601 with offset.'),
+  products: z.array(z.object({ slug: z.string(), name: z.string() })),
+  note: z.string(),
+  confirmationSent: z.boolean().describe('Whether the LINE confirmation has been delivered.'),
+});
