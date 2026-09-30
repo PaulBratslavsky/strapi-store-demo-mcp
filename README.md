@@ -3,7 +3,7 @@
 A Strapi 5 plugin that shows one content model serving people and AI agents. It adds a fictional luxury house, "Maison": collections, products, boutiques and stock. Signed-in customers can request boutique visits, and staff review and confirm them.
 
 - **Ten MCP tools and one MCP prompt** on Strapi's `/mcp`, each gated by a permission you grant per token
-- **The same tools in the admin's AI chat**, through [strapi-plugin-tanstack-ai](https://github.com/PaulBratslavsky/strapi-plugin-tanstack-ai) 1.6
+- **Six of the tools in the admin's AI chat**, through [strapi-plugin-tanstack-ai](https://github.com/PaulBratslavsky/strapi-plugin-tanstack-ai) 1.6
 - **A human gate:** agents can request appointments, but only staff confirm them
 - **Customer identity comes from sign-in, never from the model**, through [strapi-oauth-mcp-manager](https://github.com/PaulBratslavsky/strapi-oauth-mcp-manager) 1.1 and LINE
 - **A live requests board and demo data** in the admin panel, with content in Japanese and English
@@ -19,7 +19,9 @@ Maison is fictional. The plugin uses no real brand's names, products or images.
 | The Maison admin page | Staff | The admin's role |
 | The Content Manager | Staff | Content Manager permissions |
 
-Every surface calls the same services, so it gets the same answers. Confirming a request is one act wherever it happens: the `confirm_appointment` tool, the board's **Confirm** button and **Publish** in the Content Manager all publish the appointment. None of them messages the customer. An ops agent sends the LINE confirmation afterwards.
+The tools, the chat and the board call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
+
+Confirming a request is one act wherever it happens: the `confirm_appointment` tool, the board's **Confirm** button and **Publish** in the Content Manager all publish the appointment. None of them messages the customer. An ops agent sends the LINE confirmation afterwards. One difference: **Publish** in the Content Manager doesn't check the visit time, so it can confirm a visit that has already passed.
 
 ## Requirements
 
@@ -62,7 +64,7 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 
 | Key | Default | Purpose |
 |---|---|---|
-| `liffUrl` | `null` | Base of the links in LINE confirmations, e.g. `https://liff.line.me/<LIFF ID>`. Use `http://localhost:<port>` for local development. Until it's set, `pending_confirmations` answers `not_configured`. |
+| `liffUrl` | `null` | Base of the links in LINE confirmations, e.g. `https://liff.line.me/<LIFF ID>`. Use `http://localhost:<port>` for local development. Until it's set, `pending_confirmations` answers `not_configured`. An empty value counts as not set. |
 | `timezone` | `Asia/Tokyo` | Opening-hours checks, the times in messages, and the day of the `date` filter |
 | `defaultLocale` | `ja` | Content language when a tool call doesn't pass `locale` (`ja` or `en`) |
 | `maxOpenRequestsPerCustomer` | `3` | Unconfirmed future requests a customer may have |
@@ -81,12 +83,14 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 | `my_appointments` | MCP: request and view own appointments | The signed-in customer's own requests and confirmations |
 | `appointment_requests` | MCP: review appointment requests | Requests for staff, by default the ones still waiting. Customers are masked. |
 | `confirm_appointment` | MCP: confirm appointment requests | Confirms a request by publishing it. It sends nothing. |
-| `pending_confirmations` | MCP: send appointment confirmations | Confirmed visits not yet sent, each with a ready LINE flex message |
+| `pending_confirmations` | MCP: send appointment confirmations | Confirmed upcoming visits not yet sent, each with a ready LINE flex message |
 | `record_confirmation` | MCP: send appointment confirmations | Records whether a LINE confirmation was delivered |
 
 The **`send_pending_confirmations` prompt** tells an ops agent how to deliver confirmations with [LINE Bot MCP](https://github.com/line/line-bot-mcp-server). It checks that each customer is reachable (`get_profile`) before pushing, because LINE's push API answers 200 even when it can't deliver. The prompt drives both `pending_confirmations` and `record_confirmation`, so disabling either one in `disabledTools` also drops the prompt.
 
 **Errors don't throw.** They come back as `isError` results whose text is `{"error":{"code","message","hint"}}`. The codes are `not_signed_in`, `not_found`, `invalid_input`, `boutique_closed`, `in_the_past`, `too_many_open_requests`, `not_published` and `not_configured`. The hint says what to do next.
+
+One exception on MCP: arguments that fail the MCP SDK's schema check, such as a date that isn't on the calendar, come back as plain text (`Input validation error: …`), not in the JSON error shape. Errors from the tools themselves are always JSON.
 
 ## The admin chat
 
@@ -120,6 +124,8 @@ strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(author
 ```
 
 Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager. Staff tools and the board show customers masked, as in `line:U4af…88`, and never the full LINE user ID.
+
+The Content Manager doesn't show an appointment's `customer` field at all, in the list or the edit view. The Document Service still reads and writes it, and saving or publishing an appointment in the Content Manager leaves it as it was.
 
 ## Run the ops agent
 
@@ -160,5 +166,12 @@ npm run test:ts:front       # type-check the admin
 STRAPI_APP_DIR=/path/to/strapi-app npm run test:integration   # boots that app against throwaway SQLite files
 node --env-file=/path/to/strapi-app/.env scripts/mcp-dev-tokens.mjs && npm run test:mcp   # against a running app
 ```
+
+The MCP smoke tests (the last line) need:
+- the Strapi app running at `STRAPI_URL` (default `http://localhost:1338`)
+- an admin's credentials in the environment: `ADMIN_EMAIL` and `ADMIN_PASSWORD`, or `LOCAL_TEST_ADMIN_EMAIL` and `LOCAL_TEST_ADMIN_PASSWORD`
+- `liffUrl` set in the app, or `pending_confirmations` answers `not_configured`
+
+The token script also loads the demo catalog, then saves a customer, a staff and an ops token to `test/mcp/.tokens.json`, readable by you only.
 
 The plugin runs from `dist/`, so rebuild (`npm run link`) and restart Strapi after changing it.
