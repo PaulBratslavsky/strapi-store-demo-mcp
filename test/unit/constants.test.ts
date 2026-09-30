@@ -8,8 +8,13 @@ describe('constants', () => {
     for (const action of Object.values(ACTION)) expect(action.startsWith('plugin::maison.')).toBe(true);
   });
 
-  it('declares the eight tools exactly once each', () => {
-    expect(TOOL_NAMES).toHaveLength(8);
-    expect(new Set(TOOL_NAMES).size).toBe(8);
+  it('declares the ten tools exactly once each', () => {
+    expect(TOOL_NAMES).toHaveLength(10);
+    expect(new Set(TOOL_NAMES).size).toBe(10);
+  });
+
+  it('declares the staff actions', () => {
+    expect(ACTION.appointmentsReview).toBe('plugin::maison.appointments.review');
+    expect(ACTION.appointmentsConfirm).toBe('plugin::maison.appointments.confirm');
   });
 });

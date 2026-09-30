@@ -3,6 +3,7 @@ import { z } from '@strapi/utils';
 import { ACTION } from '../../constants';
 import { toolError, toolSuccess } from '../../domain/tool-result';
 import { defineTool } from '../define';
+import { referenceInput } from '../schemas';
 
 export const recordConfirmationTool = defineTool({
   name: 'record_confirmation',
@@ -12,7 +13,7 @@ export const recordConfirmationTool = defineTool({
   auth: { policies: [{ action: ACTION.confirmationsSend }] },
   resolveInputSchema: () =>
     z.object({
-      reference: z.string().regex(/^APT-\d{4}$/, 'Use a reference like APT-4821.'),
+      reference: referenceInput,
       status: z.enum(['sent', 'failed']),
       detail: z.string().min(1).max(2000).describe("LINE's response for sent, or why it failed. Stored up to 500 characters."),
     }),

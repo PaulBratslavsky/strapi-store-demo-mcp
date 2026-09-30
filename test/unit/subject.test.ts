@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authorizationOf, lineUserIdOf, parseSubject } from '../../server/src/domain/subject';
+import { authorizationOf, lineUserIdOf, maskSubject, parseSubject } from '../../server/src/domain/subject';
 
 const VALID = 'line:U4af4980629c1a7b3f1e2d3c4b5a69788';
 
@@ -41,5 +41,24 @@ describe('authorizationOf', () => {
 describe('lineUserIdOf', () => {
   it('strips the line: prefix', () => {
     expect(lineUserIdOf(VALID)).toBe('U4af4980629c1a7b3f1e2d3c4b5a69788');
+  });
+});
+
+describe('maskSubject', () => {
+  it('keeps the prefix, three characters and the last two', () => {
+    expect(maskSubject(VALID)).toBe('line:U4af…88');
+  });
+
+  it('never contains the LINE user ID', () => {
+    expect(maskSubject(VALID)).not.toContain(lineUserIdOf(VALID));
+  });
+
+  it.each([
+    ['uppercase hex', 'line:U4AF4980629C1A7B3F1E2D3C4B5A69788'],
+    ['surrounding spaces', ` ${VALID} `],
+    ['empty', ''],
+    ['null', null],
+  ])('returns "unknown" for %s', (_label, value) => {
+    expect(maskSubject(value)).toBe('unknown');
   });
 });

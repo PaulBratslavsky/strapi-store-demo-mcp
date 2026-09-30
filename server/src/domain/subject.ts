@@ -16,3 +16,9 @@ export const authorizationOf = (
   const value = headers?.authorization;
   return typeof value === 'string' && value.length > 0 ? value : null;
 };
+
+/** A customer as staff see them, e.g. `line:U4af…88`. Never the full subject; anything that isn't one is "unknown". */
+export const maskSubject = (value: unknown): string => {
+  const subject = parseSubject(value);
+  return subject ? `${subject.slice(0, 'line:U'.length + 3)}…${subject.slice(-2)}` : 'unknown';
+};

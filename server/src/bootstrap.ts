@@ -6,6 +6,8 @@ import { PLUGIN_ID } from './constants';
 const ACTIONS = [
   { uid: 'catalog.read', displayName: 'MCP: browse the catalog', subCategory: 'mcp' },
   { uid: 'appointments.request', displayName: 'MCP: request and view own appointments', subCategory: 'mcp' },
+  { uid: 'appointments.review', displayName: 'MCP: review appointment requests', subCategory: 'mcp' },
+  { uid: 'appointments.confirm', displayName: 'MCP: confirm appointment requests', subCategory: 'mcp' },
   { uid: 'confirmations.send', displayName: 'MCP: send appointment confirmations', subCategory: 'mcp' },
   { uid: 'demo.manage', displayName: 'Load and reset demo data', subCategory: 'demo' },
 ];

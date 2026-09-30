@@ -13,6 +13,8 @@ export const UID = {
 export const ACTION = {
   catalogRead: 'plugin::maison.catalog.read',
   appointmentsRequest: 'plugin::maison.appointments.request',
+  appointmentsReview: 'plugin::maison.appointments.review',
+  appointmentsConfirm: 'plugin::maison.appointments.confirm',
   confirmationsSend: 'plugin::maison.confirmations.send',
   demoManage: 'plugin::maison.demo.manage',
 } as const;
@@ -24,6 +26,8 @@ export const TOOL_NAMES = [
   'find_boutiques',
   'request_appointment',
   'my_appointments',
+  'appointment_requests',
+  'confirm_appointment',
   'pending_confirmations',
   'record_confirmation',
 ] as const;

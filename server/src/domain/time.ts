@@ -35,3 +35,23 @@ export function toZonedIso(date: Date, timeZone: string): string {
   const abs = Math.abs(offsetMinutes);
   return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
+
+/** UTC offset in minutes of `timeZone` at `date`, e.g. 540 for Tokyo. */
+const offsetMinutes = (date: Date, timeZone: string): number => {
+  const [, sign, hours, minutes] = /([+-])(\d{2}):(\d{2})$/.exec(toZonedIso(date, timeZone)) as RegExpExecArray;
+  return (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes));
+};
+
+/** The instant a calendar day (YYYY-MM-DD) starts in `timeZone`. The second pass corrects for a DST change that night. */
+const startOfDay = (isoDate: string, timeZone: string): Date => {
+  const utcMidnight = Date.parse(`${isoDate}T00:00:00Z`);
+  const guess = utcMidnight - offsetMinutes(new Date(utcMidnight), timeZone) * 60_000;
+  return new Date(utcMidnight - offsetMinutes(new Date(guess), timeZone) * 60_000);
+};
+
+/** [start, end) of a calendar day in `timeZone`, for "visits on this day" filters. */
+export function zonedDayRange(isoDate: string, timeZone: string): { start: Date; end: Date } {
+  const next = new Date(`${isoDate}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { start: startOfDay(isoDate, timeZone), end: startOfDay(next.toISOString().slice(0, 10), timeZone) };
+}

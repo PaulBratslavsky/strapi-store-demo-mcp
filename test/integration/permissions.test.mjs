@@ -12,11 +12,13 @@ describe('maison permission actions', () => {
     await strapi?.destroy();
   });
 
-  it('registers the four plugin actions', () => {
+  it('registers the six plugin actions', () => {
     const ids = strapi.service('admin::permission').actionProvider.values().map((action) => action.actionId);
     for (const id of [
       'plugin::maison.catalog.read',
       'plugin::maison.appointments.request',
+      'plugin::maison.appointments.review',
+      'plugin::maison.appointments.confirm',
       'plugin::maison.confirmations.send',
       'plugin::maison.demo.manage',
     ]) {

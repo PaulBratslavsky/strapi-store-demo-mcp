@@ -5,7 +5,8 @@ import { UID, type Locale } from '../constants';
 import { checkOpenAt, validateOpeningHours, type Weekday } from '../domain/hours';
 import { generateReference } from '../domain/reference';
 import { failure, type ServiceResult } from '../domain/service-result';
-import { toZonedIso } from '../domain/time';
+import { maskSubject } from '../domain/subject';
+import { toZonedIso, zonedDayRange } from '../domain/time';
 
 type Doc = Record<string, any>;
 
@@ -30,11 +31,42 @@ export interface AppointmentRequest {
   now?: Date;
 }
 
+/** An appointment as staff see it: the customer masked, labels from published versions only. */
+export interface StaffAppointmentView {
+  reference: string;
+  status: 'requested' | 'confirmed';
+  customer: string;
+  boutique: { slug: string; name: string } | null;
+  requestedFor: string;
+  products: Array<{ slug: string; name: string }>;
+  note: string;
+  createdVia: 'concierge' | 'app';
+  confirmationSent: boolean;
+  createdAt: string;
+}
+
+export interface RequestFilters {
+  status?: 'requested' | 'confirmed' | 'all';
+  boutique?: string;
+  date?: string;
+  limit?: number;
+  locale?: Locale;
+  /** Only for tests. Defaults to the current time. */
+  now?: Date;
+}
+
+export interface ConfirmedAppointment {
+  appointment: StaffAppointmentView;
+  alreadyConfirmed: boolean;
+}
+
 const MIN_LEAD_MINUTES = 30;
 const DAY_NAMES: Record<Weekday, string> = {
   mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
 };
 const POPULATE = { boutique: { fields: ['slug', 'name'] }, products: { fields: ['slug', 'name'] } };
+/** Staff views read only documentIds from the draft's relations; every label comes from a published version. */
+const STAFF_POPULATE = { boutique: { fields: ['documentId'] }, products: { fields: ['documentId'] } };
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
   const publishedBySlug = (uid: string, slug: string, locale: Locale) =>
@@ -50,6 +82,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       limit: documentIds.length,
     });
     return new Set(rows.map((row) => row.documentId as string));
+  };
+
+  /** documentIds of every appointment that has a published version, i.e. that staff confirmed. */
+  const allConfirmedIds = async (): Promise<string[]> => {
+    const rows = await strapi.documents(UID.appointment).findMany({ status: 'published', fields: ['documentId'], limit: 5000 });
+    return rows.map((row) => row.documentId as string);
   };
 
   /** The appointment references among `references` that have a `sent` notification. */
@@ -102,6 +140,29 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       products: (doc.products ?? []).map((product: Doc) => products.get(product.documentId) ?? { slug: product.slug, name: product.name }),
       note: doc.customerNote ?? '',
       confirmationSent: sent.has(doc.reference),
+    }));
+  };
+
+  /** Drafts (populated with STAFF_POPULATE) → what staff see. A label with no published version is left out, never read from a draft. */
+  const toStaffViews = async (docs: Doc[], locale: Locale): Promise<StaffAppointmentView[]> => {
+    const [confirmed, sent, boutiques, products] = await Promise.all([
+      confirmedIds(docs.map((doc) => doc.documentId as string)),
+      sentReferences(docs.map((doc) => doc.reference as string)),
+      labels(UID.boutique, docs.map((doc) => doc.boutique?.documentId).filter(Boolean), locale),
+      labels(UID.product, docs.flatMap((doc) => (doc.products ?? []).map((product: Doc) => product.documentId)), locale),
+    ]);
+    const { timezone } = getConfig(strapi);
+    return docs.map((doc) => ({
+      reference: doc.reference,
+      status: confirmed.has(doc.documentId) ? 'confirmed' : 'requested',
+      customer: maskSubject(doc.customer),
+      boutique: boutiques.get(doc.boutique?.documentId) ?? null,
+      requestedFor: toZonedIso(new Date(doc.requestedFor), timezone),
+      products: ((doc.products ?? []) as Doc[]).flatMap((product) => products.get(product.documentId) ?? []),
+      note: doc.customerNote ?? '',
+      createdVia: doc.createdVia === 'concierge' ? 'concierge' : 'app',
+      confirmationSent: sent.has(doc.reference),
+      createdAt: toZonedIso(new Date(doc.createdAt), timezone),
     }));
   };
 
@@ -198,6 +259,80 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         limit: 50,
       });
       return toViews(docs as Doc[], locale);
+    },
+
+    /**
+     * Appointments for staff. "requested" (the default) lists what staff can still confirm: not confirmed yet, with
+     * the visit ahead, soonest visit first. "confirmed" and "all" list the newest requests first.
+     */
+    async listRequests(filters: RequestFilters = {}): Promise<ServiceResult<StaffAppointmentView[]>> {
+      const { defaultLocale, timezone } = getConfig(strapi);
+      const status = filters.status ?? 'requested';
+      const conditions: Doc[] = [];
+
+      if (filters.boutique) {
+        const boutique = await publishedBySlug(UID.boutique, filters.boutique, defaultLocale);
+        if (!boutique) {
+          return failure('not_found', `No boutique "${filters.boutique}".`, 'Call find_boutiques to find valid boutique slugs.');
+        }
+        conditions.push({ boutique: { documentId: { $eq: boutique.documentId } } });
+      }
+      if (filters.date) {
+        const { start, end } = zonedDayRange(filters.date, timezone);
+        conditions.push({ requestedFor: { $gte: start.toISOString(), $lt: end.toISOString() } });
+      }
+      if (status !== 'all') {
+        const confirmed = await allConfirmedIds();
+        if (status === 'confirmed') {
+          if (confirmed.length === 0) return { ok: true, value: [] };
+          conditions.push({ documentId: { $in: confirmed } });
+        } else {
+          if (confirmed.length > 0) conditions.push({ documentId: { $notIn: confirmed } });
+          conditions.push({ requestedFor: { $gte: (filters.now ?? new Date()).toISOString() } });
+        }
+      }
+
+      const docs = await strapi.documents(UID.appointment).findMany({
+        status: 'draft',
+        filters: conditions.length > 0 ? { $and: conditions } : {},
+        sort: status === 'requested' ? 'requestedFor:asc' : 'createdAt:desc',
+        populate: STAFF_POPULATE,
+        limit: filters.limit ?? 20,
+      });
+      return { ok: true, value: await toStaffViews(docs as Doc[], filters.locale ?? defaultLocale) };
+    },
+
+    /**
+     * Staff confirmation: publishes the draft, the same as Publish in the Content Manager. Confirming twice is safe.
+     * It never messages anyone; the LINE ops agent sends the confirmation afterwards.
+     */
+    async confirm(reference: string, now: Date = new Date()): Promise<ServiceResult<ConfirmedAppointment>> {
+      const { defaultLocale, timezone } = getConfig(strapi);
+      const draft = (await strapi.documents(UID.appointment).findFirst({
+        status: 'draft',
+        filters: { reference: { $eq: reference } },
+        fields: ['documentId', 'requestedFor'],
+      })) as Doc | null;
+      if (!draft) {
+        return failure('not_found', `No appointment ${reference}.`, 'Use a reference from appointment_requests.');
+      }
+
+      const alreadyConfirmed = (await confirmedIds([draft.documentId])).size > 0;
+      if (!alreadyConfirmed) {
+        const when = new Date(draft.requestedFor);
+        if (when.getTime() < now.getTime()) {
+          return failure(
+            'in_the_past',
+            `The visit for ${reference} was at ${toZonedIso(when, timezone)}, which has passed.`,
+            "A past visit can't be confirmed. Ask the customer to request a new time."
+          );
+        }
+        await strapi.documents(UID.appointment).publish({ documentId: draft.documentId });
+      }
+
+      const saved = await strapi.documents(UID.appointment).findOne({ documentId: draft.documentId, status: 'draft', populate: STAFF_POPULATE });
+      const [appointment] = await toStaffViews([saved as Doc], defaultLocale);
+      return { ok: true, value: { appointment, alreadyConfirmed } };
     },
   };
 };

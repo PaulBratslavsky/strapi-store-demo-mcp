@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatJaDateTime, toZonedIso } from '../../server/src/domain/time';
+import { formatJaDateTime, toZonedIso, zonedDayRange } from '../../server/src/domain/time';
 
 describe('formatJaDateTime', () => {
   it('formats a Tokyo date and time in Japanese', () => {
@@ -26,5 +26,24 @@ describe('toZonedIso', () => {
 
   it('drops milliseconds and writes +00:00 for UTC', () => {
     expect(toZonedIso(new Date('2026-10-10T05:00:00.789Z'), 'UTC')).toBe('2026-10-10T05:00:00+00:00');
+  });
+});
+
+describe('zonedDayRange', () => {
+  const range = (isoDate: string, timeZone: string) => {
+    const { start, end } = zonedDayRange(isoDate, timeZone);
+    return [start.toISOString(), end.toISOString()];
+  };
+
+  it('starts a Tokyo day at 15:00 UTC the day before', () => {
+    expect(range('2026-10-10', 'Asia/Tokyo')).toEqual(['2026-10-09T15:00:00.000Z', '2026-10-10T15:00:00.000Z']);
+  });
+
+  it('crosses month ends', () => {
+    expect(range('2026-10-31', 'Asia/Tokyo')).toEqual(['2026-10-30T15:00:00.000Z', '2026-10-31T15:00:00.000Z']);
+  });
+
+  it('gives a 23-hour day when daylight saving time starts', () => {
+    expect(range('2026-03-08', 'America/New_York')).toEqual(['2026-03-08T05:00:00.000Z', '2026-03-09T04:00:00.000Z']);
   });
 });

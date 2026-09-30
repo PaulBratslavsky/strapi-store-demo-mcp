@@ -7,6 +7,8 @@ import { findBoutiquesTool } from './tools/find-boutiques';
 import { viewProductTool } from './tools/view-product';
 import { searchProductsTool } from './tools/search-products';
 import { myAppointmentsTool } from './tools/my-appointments';
+import { appointmentRequestsTool } from './tools/appointment-requests';
+import { confirmAppointmentTool } from './tools/confirm-appointment';
 import { requestAppointmentTool } from './tools/request-appointment';
 import { sendPendingConfirmationsPrompt } from './prompts/send-pending-confirmations';
 import { pendingConfirmationsTool } from './tools/pending-confirmations';
@@ -28,6 +30,8 @@ export const registerMcp = (strapi: Core.Strapi) => {
   if (enabled('find_boutiques')) mcp.registerTool(findBoutiquesTool);
   if (enabled('request_appointment')) mcp.registerTool(requestAppointmentTool);
   if (enabled('my_appointments')) mcp.registerTool(myAppointmentsTool);
+  if (enabled('appointment_requests')) mcp.registerTool(appointmentRequestsTool);
+  if (enabled('confirm_appointment')) mcp.registerTool(confirmAppointmentTool);
   if (enabled('pending_confirmations')) mcp.registerTool(pendingConfirmationsTool);
   if (enabled('record_confirmation')) mcp.registerTool(recordConfirmationTool);
   // The prompt walks the agent through both confirmation tools, so it is useless (and misleading) unless both are registered.
