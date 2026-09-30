@@ -143,3 +143,6 @@ coverage
 *.tsbuildinfo
 .yalc
 yalc.lock
+
+# MCP smoke-test tokens (scripts/mcp-dev-tokens.mjs)
+test/mcp/.tokens.json

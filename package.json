@@ -49,6 +49,7 @@
     "description": "A luxury house's catalog and appointments, as MCP tools for people's apps and agents."
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@strapi/design-system": "^2.2.4",
     "@strapi/icons": "^2.2.4",
     "@strapi/sdk-plugin": "^6.1.1",
