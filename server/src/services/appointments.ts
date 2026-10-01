@@ -1,7 +1,7 @@
 import type { Core } from '@strapi/strapi';
 
 import { getConfig } from '../config';
-import { UID, type Locale } from '../constants';
+import { CREATED_VIA, UID, type CreatedVia, type Locale } from '../constants';
 import { checkOpenAt, validateOpeningHours, type Weekday } from '../domain/hours';
 import { generateReference } from '../domain/reference';
 import { failure, type ServiceResult } from '../domain/service-result';
@@ -26,7 +26,7 @@ export interface AppointmentRequest {
   productSlugs: string[];
   requestedFor: string;
   note?: string;
-  createdVia: 'concierge' | 'app';
+  createdVia: CreatedVia;
   /** Only for tests. Defaults to the current time. */
   now?: Date;
 }
@@ -40,7 +40,7 @@ export interface StaffAppointmentView {
   requestedFor: string;
   products: Array<{ slug: string; name: string }>;
   note: string;
-  createdVia: 'concierge' | 'app';
+  createdVia: CreatedVia;
   confirmationSent: boolean;
   createdAt: string;
 }
@@ -160,7 +160,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       requestedFor: toZonedIso(new Date(doc.requestedFor), timezone),
       products: ((doc.products ?? []) as Doc[]).flatMap((product) => products.get(product.documentId) ?? []),
       note: doc.customerNote ?? '',
-      createdVia: doc.createdVia === 'concierge' ? 'concierge' : 'app',
+      createdVia: (CREATED_VIA as readonly string[]).includes(doc.createdVia) ? (doc.createdVia as CreatedVia) : 'app',
       confirmationSent: sent.has(doc.reference),
       createdAt: toZonedIso(new Date(doc.createdAt), timezone),
     }));

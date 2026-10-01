@@ -3,6 +3,7 @@
 A Strapi 5 plugin that shows one content model serving people and AI agents. It adds a fictional luxury house, "Maison": collections, products, boutiques and stock. Signed-in customers can request boutique visits, and staff review and confirm them.
 
 - **Ten MCP tools and one MCP prompt** on Strapi's `/mcp`, each gated by a permission you grant per token
+- **REST routes at `/api/maison`** for websites: the catalog under Strapi's role permissions, and bookings for the signed-in LINE customer, on the same services, input checks and sign-in as the tools
 - **Six of the tools in the admin's AI chat**, through [strapi-plugin-tanstack-ai](https://github.com/PaulBratslavsky/strapi-plugin-tanstack-ai) 1.6
 - **A human gate:** agents can request appointments, but only staff confirm them
 - **Customer identity comes from sign-in, never from the model**, through [strapi-oauth-mcp-manager](https://github.com/PaulBratslavsky/strapi-oauth-mcp-manager) 1.1 and LINE
@@ -10,16 +11,17 @@ A Strapi 5 plugin that shows one content model serving people and AI agents. It 
 
 Maison is fictional. The plugin uses no real brand's names, products or images.
 
-## Four surfaces, one set of services
+## Five surfaces, one set of services
 
 | Surface | Who uses it | What decides access |
 |---|---|---|
 | MCP tools on `/mcp` | The customer app, its AI concierge, an ops agent in Claude Desktop | The admin token's Maison permissions |
+| REST routes at `/api/maison` | Websites and other apps | The catalog: a role or API token holding its action. Bookings: a LINE customer session |
 | The admin's AI chat | Staff, through strapi-plugin-tanstack-ai | The admin's role, tool by tool |
 | The Maison admin page | Staff | The admin's role |
 | The Content Manager | Staff | Content Manager permissions |
 
-The tools, the chat and the board call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
+The tools, the REST routes, the chat and the board call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
 
 Confirming a request is one act wherever it happens: the `confirm_appointment` tool, the board's **Confirm** button and **Publish** in the Content Manager all publish the appointment. None of them messages the customer. An ops agent sends the LINE confirmation afterwards. One difference: **Publish** in the Content Manager doesn't check the visit time, so it can confirm a visit that has already passed.
 
@@ -27,7 +29,7 @@ Confirming a request is one act wherever it happens: the `confirm_appointment` t
 
 - Strapi `^5.55.1`, with the MCP server enabled: `mcp: { enabled: true }` in `config/server.ts`
 - The i18n plugin, which is on by default
-- For the customer tools, strapi-oauth-mcp-manager 1.1 with LINE sign-in configured. Without it, those tools answer `not_signed_in`.
+- For the customer tools and the customer routes, strapi-oauth-mcp-manager 1.1 with LINE sign-in configured. Without it, those tools answer `not_signed_in` and those routes answer 503.
 - For the admin chat, strapi-plugin-tanstack-ai 1.6 with its chat configured. Maison needs no setup for it: the chat finds Maison's tools by itself.
 
 ## Install for local development
@@ -92,6 +94,93 @@ The **`send_pending_confirmations` prompt** tells an ops agent how to deliver co
 
 One exception on MCP: arguments that fail the MCP SDK's schema check, such as a date that isn't on the calendar, come back as plain text (`Input validation error: …`), not in the JSON error shape. Errors from the tools themselves are always JSON.
 
+## Three doors, one service layer
+
+Maison's services sit behind three HTTP doors. Each door checks who is calling in its own way, then calls the same services with the same input checks.
+
+| Door | Path | For | Who may call |
+|---|---|---|---|
+| REST routes | `/api/maison/…` | Websites and other apps | The catalog: a role or API token. Bookings: a LINE customer session |
+| Admin routes | `/maison/…` | The requests board | Admins whose role holds the action |
+| MCP tools | `/mcp` | Agents | Admin tokens with Maison permissions |
+
+### The REST routes
+
+| Route | Mirrors | Access |
+|---|---|---|
+| `GET /api/maison/collections` | `browse_collections` | `plugin::maison.catalog.browseCollections` |
+| `GET /api/maison/products` | `search_products` | `plugin::maison.catalog.searchProducts` |
+| `GET /api/maison/products/:slug` | `view_product` | `plugin::maison.catalog.viewProduct` |
+| `GET /api/maison/boutiques` | `find_boutiques` | `plugin::maison.catalog.findBoutiques` |
+| `POST /api/maison/appointments` | `request_appointment` | A LINE customer session |
+| `GET /api/maison/my-appointments` | `my_appointments` | A LINE customer session |
+
+Each route takes its tool's input, checks it with the same schema (`server/src/mcp/schemas.ts`), and answers with the tool's structured content:
+- **Query parameters** have the tool's argument names, limits and checks: `?occasion=travel&maxPriceJpy=400000&locale=en`.
+- **A list repeats its parameter:** `?productSlugs=weekender-50&productSlugs=passport-cover`. One is a list of one. A comma-separated list isn't split, so it fails the slug check.
+- **`locale`** is `ja` or `en`, and defaults to `defaultLocale`, as on the tools.
+- **The booking body** is `request_appointment`'s input, as JSON: `boutique`, `productSlugs`, `requestedFor` and an optional `note`. Any other field is ignored, a customer included.
+- **A booking** answers 201 with `{ "appointment": … }`. The requests board shows it as made via `web`.
+
+```bash
+STRAPI=http://localhost:1338   # the demo's Strapi; a stock Strapi listens on 1337
+
+# The catalog, once a role holds its actions (below)
+curl "$STRAPI/api/maison/collections?locale=en"
+curl "$STRAPI/api/maison/products?occasion=travel&maxPriceJpy=400000&inStockAt=ginza&locale=en"
+curl "$STRAPI/api/maison/products/weekender-50?locale=en"
+curl "$STRAPI/api/maison/boutiques?productSlugs=weekender-50&productSlugs=passport-cover&date=2026-10-10"
+
+# Bookings, with a customer's LINE session
+curl -X POST "$STRAPI/api/maison/appointments" \
+  -H "Authorization: Bearer $SESSION" -H 'Content-Type: application/json' \
+  -d '{"boutique":"ginza","productSlugs":["weekender-50"],"requestedFor":"2026-10-10T14:00:00+09:00","note":"A gift"}'
+curl -H "Authorization: Bearer $SESSION" "$STRAPI/api/maison/my-appointments?locale=en"
+```
+
+**Errors** are `{ "error": { "code", "message", "hint" } }`, with the code, message and hint the tool would return. The hints are the tools' own words, so a tool they name stands for its route: `search_products` is `GET /products`.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `invalid_input` | The shared schema rejects a value (no hint; MCP answers these as `Input validation error: …`), or a minimum price is above the maximum |
+| 401 | `not_signed_in` | A customer route has no LINE customer session. Sent with `WWW-Authenticate: Bearer` |
+| 404 | `not_found` | An unknown product, collection or boutique |
+| 409 | `boutique_closed`, `too_many_open_requests` | The same request can succeed once something changes: the boutique's hours, or one of the customer's open requests |
+| 422 | `in_the_past` | The visit starts less than 30 minutes from now |
+| 503 | `not_configured` | Customer sign-in isn't configured: oauth-mcp-manager 1.1 isn't installed |
+
+Strapi answers some requests itself, in its own error body: a 403 when no role or token holds a catalog action, and a 401 for a bearer token it doesn't recognize on a catalog route.
+
+### Grant the catalog
+
+The catalog routes use Strapi's content-API permissions. Grant their four actions to a role under **Settings → Users & Permissions plugin → Roles**, such as **Public** for a public website, or to an API token:
+- `plugin::maison.catalog.browseCollections`
+- `plugin::maison.catalog.searchProducts`
+- `plugin::maison.catalog.viewProduct`
+- `plugin::maison.catalog.findBoutiques`
+
+The list there also shows the two customer actions, `plugin::maison.customer.requestAppointment` and `plugin::maison.customer.myAppointments`. Roles don't apply to them, so granting them opens nothing.
+
+These actions aren't the admin token permissions under Tokens. "MCP: browse the catalog" (`plugin::maison.catalog.read`) gates the tools only.
+
+### The customer session
+
+The customer routes take the same session as the MCP tools: the access token oauth-mcp-manager issues for a customer's LINE sign-in. The routes set `auth: false`, so users-permissions doesn't refuse that token, and Maison's `customer-session` policy checks it instead:
+- It passes the `Authorization` header to `identity.customerSession`, the function behind the tools' `getCustomerSubject`. That asks oauth-mcp-manager's `resolveSubject`.
+- A LINE customer gets through, as `ctx.state.maisonCustomer`. The routes book and list for that customer only.
+- Anything else is a 401 with `WWW-Authenticate: Bearer`: no header or a malformed one, an unknown or expired session, a staff session, an admin or API token, or a users-permissions JWT.
+- Without oauth-mcp-manager 1.1, it's a 503 that says customer sign-in isn't configured.
+- It never logs a token or a full LINE user ID.
+
+Send the session to the customer routes only. The catalog routes check tokens with Strapi's own content-API auth, which doesn't know LINE sessions and answers 401. A website on another origin also needs its origin in `strapi::cors`.
+
+### Why the tools aren't REST wrappers
+
+The two doors share what's underneath, not each other. A route doesn't call a tool, and a tool doesn't call a route: both call the services, with the same schemas and the same customer check. They're shaped for different callers:
+- **An agent works through a task.** Each tool is one step of it. Its description tells the model when to use it and what it won't do, and its errors name the next tool to call, such as "Call find_boutiques to find valid boutique slugs."
+- **A website works with resources.** It wants paths it can link to and cache, status codes, query strings, and Strapi's role permissions.
+- **Some tools have no route, on purpose.** The staff tools sit behind the admin routes, for the board. `pending_confirmations` returns customers' full LINE user IDs, so it stays with the ops agent.
+
 ## The admin chat
 
 strapi-plugin-tanstack-ai 1.6 finds Maison's `ai-tools` service and offers six of its tools as `maison__<name>`:
@@ -125,6 +214,8 @@ strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(author
 
 Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager. Staff tools and the board show customers masked, as in `line:U4af…88`, and never the full LINE user ID.
 
+The REST customer routes run the same check, through the `customer-session` policy (see [The customer session](#the-customer-session)).
+
 The Content Manager doesn't show an appointment's `customer` field at all, in the list or the edit view. The Document Service still reads and writes it, and saving or publishing an appointment in the Content Manager leaves it as it was.
 
 ## Run the ops agent
@@ -155,6 +246,7 @@ Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Mes
   - `strapi.plugin('maison').service('identity').getCustomerSubject(extra)` for the signed-in customer
   - `service('errors').toolError(code, message, hint)` for errors in the same shape
   - `service('catalog')` and `service('appointments')` for the same logic the tools use, including `listRequests` and `confirm`
+- **Your own routes:** guard a customer route with `config: { auth: false, policies: ['plugin::maison.customer-session'] }`, and read the customer from `ctx.state.maisonCustomer`. For an `Authorization` header anywhere else, `service('identity').customerSession(authorization)` answers `{ status: 'signed_in', subject }`, `{ status: 'signed_out' }` or `{ status: 'unavailable' }`.
 - **Fewer tools:** list them in `disabledTools`.
 
 ## Development

@@ -43,3 +43,40 @@ describe('identity.getCustomerSubject', () => {
     expect(strapi.log.warn).toHaveBeenCalled();
   });
 });
+
+describe('identity.customerSession, the one code path for the MCP tools and the REST routes', () => {
+  it('resolves a raw Authorization header to the signed-in LINE customer', async () => {
+    const resolveSubject = vi.fn(async () => VALID);
+    expect(await withResolver(resolveSubject).customerSession('Bearer mcp_at_x')).toEqual({ status: 'signed_in', subject: VALID });
+    expect(resolveSubject).toHaveBeenCalledWith('Bearer mcp_at_x');
+  });
+
+  it('is signed out without a header, or when the resolver finds no LINE customer or fails', async () => {
+    const resolveSubject = vi.fn(async () => VALID);
+    expect(await withResolver(resolveSubject).customerSession(null)).toEqual({ status: 'signed_out' });
+    expect(resolveSubject).not.toHaveBeenCalled();
+    expect(await withResolver(async () => null).customerSession('Bearer t')).toEqual({ status: 'signed_out' });
+    expect(await withResolver(async () => 'admin:1').customerSession('Bearer t')).toEqual({ status: 'signed_out' });
+    const failing = withResolver(async () => { throw new Error('db down'); });
+    expect(await failing.customerSession('Bearer t')).toEqual({ status: 'signed_out' });
+  });
+
+  it('is unavailable, whatever the header, when oauth-mcp-manager 1.1 is not installed', async () => {
+    const without = identityService({ strapi: fakeStrapi() });
+    expect(await without.customerSession('Bearer t')).toEqual({ status: 'unavailable' });
+    expect(await without.customerSession(null)).toEqual({ status: 'unavailable' });
+    const old = identityService({ strapi: fakeStrapi({ plugins: { 'strapi-oauth-mcp-manager': { oauth: {} } } }) });
+    expect(await old.customerSession('Bearer t')).toEqual({ status: 'unavailable' });
+  });
+
+  it("logs a failed lookup without the token or the resolver's message", async () => {
+    const token = 'mcp_at_secret-session-token';
+    const strapi = fakeStrapi({
+      plugins: { 'strapi-oauth-mcp-manager': { oauth: { resolveSubject: async (header: string) => { throw new Error(`no row for ${header}`); } } } },
+    });
+    await identityService({ strapi }).customerSession(`Bearer ${token}`);
+    const logged = JSON.stringify(strapi.log.warn.mock.calls);
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain('no row for');
+  });
+});
