@@ -8,7 +8,7 @@ The photos are used under the [Pexels License](https://www.pexels.com/license/):
 
 | File | Pexels photo page | Photographer | Edit |
 | --- | --- | --- | --- |
-| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | A hotel's rooftop sign and a street sign blurred |
+| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | Three signs on buildings blurred: two lit logos, rooftop lettering and a hotel's name |
 | `collection-atelier.jpg` | [Tools and Leather Lying on a Desk in a Leather Crafting Workshop](https://www.pexels.com/photo/tools-and-leather-lying-on-a-desk-in-a-leather-crafting-workshop-4452603/) | Vlada Karpovich | None |
 | `collection-gifts.jpg` | [Close-up Shot of Black Gift Boxes](https://www.pexels.com/photo/close-up-shot-of-black-gift-boxes-5872362/) | Max Fischer | None |
 | `collection-voyage.jpg` | [Vintage Black Luggage Stack in Cozy Setting](https://www.pexels.com/photo/vintage-black-luggage-stack-in-cozy-setting-36933446/) | Jonathan Borba | None |
@@ -29,11 +29,11 @@ No photo shows a brand or a recognisable person: labels, dials and signs that ca
 
 ## Generated placeholders
 
-`boutique-ginza.png` and `boutique-omotesando.png` are made by `scripts/generate-seed-images.mjs`: a gradient with the name on it, so there is no third-party imagery in them. Run `node scripts/generate-seed-images.mjs` to make them again. The script only writes the entries whose file name in `content.json` ends in `.png`, so it never touches a photo.
+`boutique-ginza.png` and `boutique-omotesando.png` are made by `scripts/generate-seed-images.mjs`: a gradient with the name on it, so there is no third-party imagery in them. Run `node scripts/generate-seed-images.mjs` to make them again. The script only writes the entries whose file name in `content.json` ends in `.png`, and leaves every other file alone. That is why photos are never saved as `.png`.
 
 ## Replacing an image
 
-1. Add the new file here as `.jpg`, `.jpeg`, `.png` or `.webp`, named like the others (`product-<slug>`, `collection-<slug>` or `boutique-<slug>`). The seed sets each upload's type from the extension.
+1. Add the new file here as `.jpg`, `.jpeg` or `.webp`, named like the others (`product-<slug>`, `collection-<slug>` or `boutique-<slug>`). Don't use `.png`: the generator treats every `.png` entry as a placeholder and would draw over it. The seed sets each upload's type from the extension.
 2. Point the entry's `image` in `server/seed/content.json` at it, and delete the file it replaces. The unit tests fail if `content.json` names a file that isn't here, or this folder holds a file that `content.json` doesn't name.
 3. Add a row to the table above with the Pexels page, the photographer and any edit. For a photo from somewhere else, record its source and license the same way.
 4. Keep it free of brands and recognisable people. Check the labels, dials and signs in the frame, and blur or crop whatever shows.
