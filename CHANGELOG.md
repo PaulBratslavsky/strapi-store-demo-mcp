@@ -19,3 +19,4 @@
 - `request_appointment` takes an optional `locale` (`ja` or `en`), like the other customer tools, and names the boutique and products in its answer in that language. Until now it always answered in `defaultLocale`, which is still the default. The booking body of `POST /api/maison/appointments` takes it too.
 - The customer tools' input schemas live in `server/src/mcp/schemas.ts`, shared with the REST routes. Apart from `request_appointment`'s `locale`, the tools' inputs, outputs and errors are unchanged.
 - A failed customer lookup is logged without oauth-mcp-manager's error message, which could quote the token.
+- Demo catalog photos from Pexels replace the generated images, apart from two boutiques that keep their placeholders. See `server/seed/images/SOURCES.md`.
