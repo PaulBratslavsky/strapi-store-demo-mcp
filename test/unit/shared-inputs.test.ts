@@ -4,6 +4,7 @@ import { CREATED_VIA } from '../../server/src/constants';
 import {
   browseCollectionsInput,
   findBoutiquesInput,
+  localeInput,
   myAppointmentsInput,
   requestAppointmentInput,
   searchProductsInput,
@@ -30,6 +31,12 @@ describe('one source of validation for the MCP tools and the REST routes', () =>
   ])('%s validates with the shared schema object', (_name, tool: any, shared) => {
     expect(shared).toBeDefined();
     expect(tool.resolveInputSchema(context)).toBe(shared);
+  });
+
+  it('gives every customer tool the same locale input: ja or en, with the default locale when left out', () => {
+    for (const shared of [browseCollectionsInput, searchProductsInput, viewProductInput, findBoutiquesInput, requestAppointmentInput, myAppointmentsInput]) {
+      expect(shared.shape.locale).toBe(localeInput);
+    }
   });
 });
 

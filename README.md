@@ -81,7 +81,7 @@ Restart Strapi. Open **Maison** in the admin menu and choose **Load demo catalog
 | `search_products` | MCP: browse the catalog | Products by collection, category, gift occasion, price, personalization and boutique stock |
 | `view_product` | MCP: browse the catalog | One product: story, dimensions, personalization, stock per boutique |
 | `find_boutiques` | MCP: browse the catalog | Boutiques, opening hours, open on a date, stock for chosen products |
-| `request_appointment` | MCP: request and view own appointments | Creates a **draft** visit request for the signed-in customer |
+| `request_appointment` | MCP: request and view own appointments | Creates a **draft** visit request for the signed-in customer, and names the boutique and products in the customer's `locale` |
 | `my_appointments` | MCP: request and view own appointments | The signed-in customer's own requests and confirmations |
 | `appointment_requests` | MCP: review appointment requests | Requests for staff, by default the ones still waiting. Customers are masked. |
 | `confirm_appointment` | MCP: confirm appointment requests | Confirms a request by publishing it. It sends nothing. |
@@ -118,8 +118,8 @@ Maison's services sit behind three HTTP doors. Each door checks who is calling i
 Each route takes its tool's input, checks it with the same schema (`server/src/mcp/schemas.ts`), and answers with the tool's structured content:
 - **Query parameters** have the tool's argument names, limits and checks: `?occasion=travel&maxPriceJpy=400000&locale=en`.
 - **A list repeats its parameter:** `?productSlugs=weekender-50&productSlugs=passport-cover`. One is a list of one. A comma-separated list isn't split, so it fails the slug check.
-- **`locale`** is `ja` or `en`, and defaults to `defaultLocale`, as on the tools.
-- **The booking body** is `request_appointment`'s input, as JSON: `boutique`, `productSlugs`, `requestedFor` and an optional `note`. Any other field is ignored, a customer included.
+- **`locale`** is `ja` or `en`, and defaults to `defaultLocale`, as on the tools. A booking takes it in the body.
+- **The booking body** is `request_appointment`'s input, as JSON: `boutique`, `productSlugs`, `requestedFor`, and an optional `note` and `locale`. The `locale` picks the language of the boutique and product names in the answer. Any other field is ignored, a customer included.
 - **A booking** answers 201 with `{ "appointment": … }`. The requests board shows it as made via `web`.
 
 ```bash
@@ -134,7 +134,7 @@ curl "$STRAPI/api/maison/boutiques?productSlugs=weekender-50&productSlugs=passpo
 # Bookings, with a customer's LINE session
 curl -X POST "$STRAPI/api/maison/appointments" \
   -H "Authorization: Bearer $SESSION" -H 'Content-Type: application/json' \
-  -d '{"boutique":"ginza","productSlugs":["weekender-50"],"requestedFor":"2026-10-10T14:00:00+09:00","note":"A gift"}'
+  -d '{"boutique":"ginza","productSlugs":["weekender-50"],"requestedFor":"2026-10-10T14:00:00+09:00","note":"A gift","locale":"en"}'
 curl -H "Authorization: Bearer $SESSION" "$STRAPI/api/maison/my-appointments?locale=en"
 ```
 

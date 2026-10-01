@@ -178,6 +178,7 @@ describe('the REST door: /api/maison over HTTP', () => {
     assert.match(body.appointment.reference, /^APT-\d{4}$/);
     assert.equal(body.appointment.status, 'requested');
     assert.equal(body.appointment.requestedFor, VISIT);
+    assert.deepEqual(body.appointment.boutique, { slug: 'ginza', name: '銀座本店' }, 'without a locale, in the default locale');
     assert.ok(!JSON.stringify(body).includes(STUB_ADMIN_KEY), 'the admin key behind the session never comes back');
     reference = body.appointment.reference;
 
@@ -233,6 +234,15 @@ describe('the REST door: /api/maison over HTTP', () => {
     assert.equal(status, 201, JSON.stringify(body));
     const stored = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: body.appointment.reference } });
     assert.equal(stored.customer, SUBJECT_B);
+    await strapi.documents(APPOINTMENT).delete({ documentId: stored.documentId });
+  });
+
+  it("books in the customer's language when the body names a locale, as request_appointment does", async () => {
+    const { status, body } = await call('POST', '/appointments', { token: 'test-b', body: { ...booking, requestedFor: tokyoTime(IN_20_DAYS, '11:00'), locale: 'en' } });
+    assert.equal(status, 201, JSON.stringify(body));
+    assert.deepEqual(body.appointment.boutique, { slug: 'ginza', name: 'Ginza Flagship' });
+    assert.deepEqual(body.appointment.products, [{ slug: 'weekender-50', name: 'Weekender 50' }]);
+    const stored = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: body.appointment.reference } });
     await strapi.documents(APPOINTMENT).delete({ documentId: stored.documentId });
   });
 

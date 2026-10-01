@@ -27,6 +27,8 @@ export interface AppointmentRequest {
   requestedFor: string;
   note?: string;
   createdVia: CreatedVia;
+  /** The language of the boutique and product names in the answer. Defaults to defaultLocale. */
+  locale?: Locale;
   /** Only for tests. Defaults to the current time. */
   now?: Date;
 }
@@ -269,7 +271,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         },
       });
       const saved = await strapi.documents(UID.appointment).findOne({ documentId: created.documentId, status: 'draft', populate: POPULATE });
-      const [view] = await toViews([saved as Doc], defaultLocale);
+      const [view] = await toViews([saved as Doc], input.locale ?? defaultLocale);
       return { ok: true, value: view };
     },
 

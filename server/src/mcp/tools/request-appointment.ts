@@ -24,6 +24,7 @@ export const requestAppointmentTool = defineTool({
       productSlugs: args.productSlugs,
       requestedFor: args.requestedFor,
       note: args.note,
+      locale: args.locale,
       createdVia: surface === 'concierge' ? 'concierge' : 'app',
     });
     if (!result.ok) return toolError(result.code, result.message, result.hint);

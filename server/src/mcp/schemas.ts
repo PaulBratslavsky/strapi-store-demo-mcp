@@ -63,6 +63,7 @@ export const requestAppointmentInput = z.object({
   productSlugs: z.array(slugInput).min(1).max(5).describe('One to five product slugs the customer wants to see.'),
   requestedFor: isoDateTimeInput.describe('Visit start, ISO 8601 with a time zone offset, e.g. 2026-10-10T14:00:00+09:00.'),
   note: z.string().max(500).optional().describe("The customer's own words for the boutique, e.g. who the gift is for."),
+  locale: localeInput,
 });
 
 export const myAppointmentsInput = z.object({ locale: localeInput });

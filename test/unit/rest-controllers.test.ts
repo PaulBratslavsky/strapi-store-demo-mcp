@@ -214,6 +214,14 @@ describe('POST /appointments (customer.requestAppointment)', () => {
     expect(requestAppointmentTool.resolveOutputSchema(context).parse(ctx.body)).toEqual({ appointment: view });
   });
 
+  it("asks for the names in the customer's language when the body has a locale", async () => {
+    const request = vi.fn(async () => ({ ok: true, value: view }));
+    const ctx = fakeCtx({ state: { maisonCustomer: SUBJECT }, body: { ...booking, locale: 'en' } });
+    await customerWith({ request }).requestAppointment(ctx);
+    expect(request).toHaveBeenCalledWith({ subject: SUBJECT, ...booking, note: undefined, locale: 'en', createdVia: 'web' });
+    expect(ctx.status).toBe(201);
+  });
+
   it('never takes the customer, or where the request came from, from the body', async () => {
     const request = vi.fn(async () => ({ ok: true, value: view }));
     const ctx = fakeCtx({ state: { maisonCustomer: SUBJECT }, body: { ...booking, customer: OTHER, subject: OTHER, createdVia: 'concierge' } });
@@ -240,6 +248,7 @@ describe('POST /appointments (customer.requestAppointment)', () => {
     ['an empty product list', { ...booking, productSlugs: [] }],
     ['a time without an offset', { ...booking, requestedFor: '2030-01-12T14:00:00' }],
     ['a note over 500 characters', { ...booking, note: 'x'.repeat(501) }],
+    ['a locale the tools reject', { ...booking, locale: 'fr' }],
   ])('rejects %s with 400 invalid_input', async (_label, body) => {
     const request = vi.fn();
     const ctx = fakeCtx({ state: { maisonCustomer: SUBJECT }, body });

@@ -30,6 +30,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         productSlugs: input.productSlugs,
         requestedFor: input.requestedFor,
         note: input.note,
+        locale: input.locale,
         createdVia: 'web',
       });
       if (!result.ok) return replyFailure(ctx, result);
