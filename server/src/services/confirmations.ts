@@ -9,6 +9,8 @@ import { formatJaDateTime, toZonedIso } from '../domain/time';
 
 type Doc = Record<string, any>;
 export type Outcome = 'sent' | 'failed';
+/** Who recorded an outcome: Strapi itself, when it sent the confirmation, or the ops agent, through record_confirmation. */
+export type RecordedBy = 'strapi' | 'ops-agent';
 
 export interface PendingConfirmation {
   reference: string;
@@ -134,8 +136,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       return { ok: true, value: pending };
     },
 
-    /** Appends a delivery outcome. A second `sent` for the same appointment returns the first one instead. */
-    async record(input: { reference: string; status: Outcome; detail: string }): Promise<ServiceResult<RecordedConfirmation>> {
+    /**
+     * Appends a delivery outcome. A second `sent` for the same appointment returns the first one instead.
+     * `recordedBy` defaults to the ops agent, so record_confirmation, which never passes it, keeps writing 'ops-agent'.
+     */
+    async record(input: {
+      reference: string;
+      status: Outcome;
+      detail: string;
+      recordedBy?: RecordedBy;
+    }): Promise<ServiceResult<RecordedConfirmation>> {
       const appointment = (await strapi.documents(UID.appointment).findFirst({
         status: 'draft',
         filters: { reference: { $eq: input.reference } },
@@ -169,7 +179,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
           outcome: input.status,
           sentAt: new Date().toISOString(),
           detail: clip(input.detail),
-          recordedBy: 'ops-agent',
+          recordedBy: input.recordedBy ?? 'ops-agent',
         },
       });
       const saved = (await strapi.documents(UID.notification).findOne({ documentId: created.documentId })) as Doc;
