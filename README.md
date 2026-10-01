@@ -166,11 +166,12 @@ These actions aren't the admin token permissions under Tokens. "MCP: browse the 
 ### The customer session
 
 The customer routes take the same session as the MCP tools: the access token oauth-mcp-manager issues for a customer's LINE sign-in. The routes set `auth: false`, so users-permissions doesn't refuse that token, and Maison's `customer-session` policy checks it instead:
-- It passes the `Authorization` header to `identity.customerSession`, the function behind the tools' `getCustomerSubject`. That asks oauth-mcp-manager's `resolveSubject`.
+- It passes the `Authorization` header to `identity.customerSession`, the function behind the tools' `getCustomerSubject`.
+- That first checks the session with oauth-mcp-manager's `resolveAccessToken`, the check `/mcp` runs before any tool, and only then asks `resolveSubject` whose session it is. The tools skip the first step, because `/mcp` has already taken it.
 - A LINE customer gets through, as `ctx.state.maisonCustomer`. The routes book and list for that customer only.
-- Anything else is a 401 with `WWW-Authenticate: Bearer`: no header or a malformed one, an unknown or expired session, a staff session, an admin or API token, or a users-permissions JWT.
+- Anything else is a 401 with `WWW-Authenticate: Bearer`: no header or a malformed one, an unknown, expired, revoked or rotated session, a user who is no longer active, a staff session, an admin or API token, or a users-permissions JWT.
 - Without oauth-mcp-manager 1.1, it's a 503 that says customer sign-in isn't configured.
-- It never logs a token or a full LINE user ID.
+- It never logs a token, the admin key behind a session, or a full LINE user ID.
 
 Send the session to the customer routes only. The catalog routes check tokens with Strapi's own content-API auth, which doesn't know LINE sessions and answers 401. A website on another origin also needs its origin in `strapi::cors`.
 
@@ -214,7 +215,7 @@ strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(author
 
 Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager. Staff tools and the board show customers masked, as in `line:U4af…88`, and never the full LINE user ID.
 
-The REST customer routes run the same check, through the `customer-session` policy (see [The customer session](#the-customer-session)).
+The REST customer routes run the same lookup through the `customer-session` policy, after checking the session the way `/mcp` does (see [The customer session](#the-customer-session)).
 
 The Content Manager doesn't show an appointment's `customer` field at all, in the list or the edit view. The Document Service still reads and writes it, and saving or publishing an appointment in the Content Manager leaves it as it was.
 
@@ -246,7 +247,7 @@ Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Mes
   - `strapi.plugin('maison').service('identity').getCustomerSubject(extra)` for the signed-in customer
   - `service('errors').toolError(code, message, hint)` for errors in the same shape
   - `service('catalog')` and `service('appointments')` for the same logic the tools use, including `listRequests` and `confirm`
-- **Your own routes:** guard a customer route with `config: { auth: false, policies: ['plugin::maison.customer-session'] }`, and read the customer from `ctx.state.maisonCustomer`. For an `Authorization` header anywhere else, `service('identity').customerSession(authorization)` answers `{ status: 'signed_in', subject }`, `{ status: 'signed_out' }` or `{ status: 'unavailable' }`.
+- **Your own routes:** guard a customer route with `config: { auth: false, policies: ['plugin::maison.customer-session'] }`, and read the customer from `ctx.state.maisonCustomer`. For an `Authorization` header anywhere else, `service('identity').customerSession(authorization)` checks the session the way `/mcp` does and answers `{ status: 'signed_in', subject }`, `{ status: 'signed_out' }` or `{ status: 'unavailable' }`.
 - **Fewer tools:** list them in `disabledTools`.
 
 ## Development

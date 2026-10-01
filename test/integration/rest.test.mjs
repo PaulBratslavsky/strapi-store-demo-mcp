@@ -8,6 +8,8 @@ const SATURDAY_2PM = '2030-01-12T14:00:00+09:00'; // Ginza is open
 const TUESDAY_2PM = '2030-01-15T14:00:00+09:00'; // Osaka is closed all day on Tuesdays
 const CATALOG_ACTIONS = ['browseCollections', 'searchProducts', 'viewProduct', 'findBoutiques'];
 const booking = { boutique: 'ginza', productSlugs: ['weekender-50'], requestedFor: SATURDAY_2PM };
+/** Stands in for the decrypted admin key resolveAccessToken returns with a valid session. It must never come back. */
+const STUB_ADMIN_KEY = 'stub-admin-key-behind-the-session';
 
 describe('the REST door: /api/maison over HTTP', () => {
   let strapi;
@@ -39,12 +41,20 @@ describe('the REST door: /api/maison over HTTP', () => {
     strapi = await bootStrapi('rest');
     await strapi.plugin('maison').service('seed').loadDemoCatalog();
 
-    // LINE customer sessions: Bearer test-a is customer A, Bearer test-b customer B. Every other header goes to
-    // oauth-mcp-manager's own resolveSubject, which has no session in this database.
+    // LINE customer sessions, as oauth-mcp-manager sees them. test-a and test-b are sessions /mcp accepts, for customers
+    // A and B. test-a-rotated still names customer A, but /mcp refuses it: its admin token was rotated. Every other
+    // token goes to oauth-mcp-manager's own resolvers, which have no session in this database.
     const oauth = strapi.plugin('strapi-oauth-mcp-manager').service('oauth');
+    const resolveAccessToken = oauth.resolveAccessToken.bind(oauth);
     const resolveSubject = oauth.resolveSubject.bind(oauth);
-    const sessions = { 'Bearer test-a': SUBJECT_A, 'Bearer test-b': SUBJECT_B };
-    oauth.resolveSubject = async (authorization) => sessions[authorization] ?? resolveSubject(authorization);
+    const accessTokens = {
+      'test-a': { valid: true, adminAccessKey: STUB_ADMIN_KEY, grantId: 1 },
+      'test-b': { valid: true, adminAccessKey: STUB_ADMIN_KEY, grantId: 2 },
+      'test-a-rotated': { valid: false, reason: 'grant_revoked' },
+    };
+    const subjects = { 'Bearer test-a': SUBJECT_A, 'Bearer test-b': SUBJECT_B, 'Bearer test-a-rotated': SUBJECT_A };
+    oauth.resolveAccessToken = async (token) => accessTokens[token] ?? resolveAccessToken(token);
+    oauth.resolveSubject = async (authorization) => subjects[authorization] ?? resolveSubject(authorization);
 
     // A staff-issued API token with full access to the content API.
     ({ accessKey: fullAccessToken } = await strapi.service('admin::api-token').create({
@@ -136,6 +146,7 @@ describe('the REST door: /api/maison over HTTP', () => {
     assert.match(body.appointment.reference, /^APT-\d{4}$/);
     assert.equal(body.appointment.status, 'requested');
     assert.equal(body.appointment.requestedFor, SATURDAY_2PM);
+    assert.ok(!JSON.stringify(body).includes(STUB_ADMIN_KEY), 'the admin key behind the session never comes back');
     reference = body.appointment.reference;
 
     const stored = await strapi.documents('plugin::maison.appointment').findFirst({ status: 'draft', filters: { reference } });
@@ -144,6 +155,17 @@ describe('the REST door: /api/maison over HTTP', () => {
       (appointment) => appointment.reference === reference
     );
     assert.equal(staffView.createdVia, 'web', 'the requests board shows where it came from');
+  });
+
+  it('refuses a session /mcp would refuse, such as one whose admin token was rotated, though it names a customer', async () => {
+    const appointments = () => strapi.documents('plugin::maison.appointment').count({});
+    const before = await appointments();
+    const booked = await call('POST', '/appointments', { token: 'test-a-rotated', body: { ...booking, requestedFor: '2030-01-19T16:00:00+09:00' } });
+    assert.equal(booked.status, 401, JSON.stringify(booked.body));
+    assert.equal(booked.headers.get('www-authenticate'), 'Bearer');
+    assert.equal(booked.body.error.code, 'not_signed_in');
+    assert.equal(await appointments(), before, 'nothing was booked');
+    assert.equal((await call('GET', '/my-appointments', { token: 'test-a-rotated' })).status, 401);
   });
 
   it('never takes the customer from the body', async () => {

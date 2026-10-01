@@ -26,13 +26,15 @@ interface PolicyContext {
 }
 
 /**
- * The customer routes' gate. They set auth: false, so users-permissions doesn't refuse a LINE session before this runs.
- * It resolves the Authorization header through the identity service, exactly as the MCP tools do, and puts the
- * customer in ctx.state.maisonCustomer. Anything else is refused: 401 not_signed_in, or 503 not_configured when
- * oauth-mcp-manager isn't installed.
+ * The customer routes' gate. They set auth: false, so users-permissions doesn't refuse a LINE session before this runs,
+ * and so nothing has checked the session yet either. The identity service checks it the way oauth-mcp-manager's /mcp
+ * middleware does (resolveAccessToken), then resolves the customer as the MCP tools do (resolveSubject), and the
+ * customer goes in ctx.state.maisonCustomer. Anything else is refused: 401 not_signed_in, or 503 not_configured when
+ * oauth-mcp-manager 1.1 isn't installed.
  */
 const customerSession = async (policyContext: PolicyContext, _config: unknown, { strapi }: { strapi: Core.Strapi }) => {
   const identity = strapi.plugin('maison').service('identity');
+  // No sessionValidated here: on these routes the session is checked by this call, not by /mcp.
   const session = await identity.customerSession(authorizationOf(policyContext.request.headers));
   if (session.status === 'signed_in') {
     policyContext.state.maisonCustomer = session.subject;
