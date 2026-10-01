@@ -1,7 +1,7 @@
 # Maison plugin: design
 
 - **Date:** 2026-09-29
-- **Status:** Draft for review. Amended 2026-09-30: staff review and confirmation, chat tools for the in-admin chat, and the requests board (see "Four surfaces").
+- **Status:** Draft for review. Amended 2026-09-30: staff review and confirmation, chat tools for the in-admin chat, the requests board, the REST door and the Homepage widget (see "Five surfaces").
 - **Overview:** [AX luxury demo overview](2026-09-29-ax-luxury-demo-overview.md)
 - **Repo:** this one (`strapi-store-demo-mcp`). The store-analytics code it started from is replaced.
 
@@ -127,12 +127,14 @@ Registered in `bootstrap` with `admin::permission` `actionProvider.registerMany`
 |---|---|---|
 | `plugin::maison.catalog.read` | MCP: browse the catalog | Catalog tools, on MCP and in the chat |
 | `plugin::maison.appointments.request` | MCP: request and view own appointments | Customer tools |
-| `plugin::maison.appointments.review` | MCP: review appointment requests | `appointment_requests`, on MCP and in the chat; the requests board |
+| `plugin::maison.appointments.review` | MCP: review appointment requests | `appointment_requests`, on MCP and in the chat; the requests board and the Homepage widget |
 | `plugin::maison.appointments.confirm` | MCP: confirm appointment requests | `confirm_appointment`, on MCP and in the chat; the board's Confirm button |
 | `plugin::maison.confirmations.send` | MCP: send appointment confirmations | Ops tools and prompt (MCP only) |
 | `plugin::maison.demo.manage` | Load and reset demo data | Admin page (demo data) |
 
-The two staff actions use the same `subCategory: 'mcp'` as the other tool actions. They also gate the chat and the admin page, so one grant on a staff role covers every surface.
+The two staff actions use the same `subCategory: 'mcp'` as the other tool actions. They also gate the chat, the admin page and the Homepage widget, so one grant on a staff role covers every staff surface.
+
+These are admin permissions. The REST door's catalog uses content-API actions instead, which users-permissions roles and API tokens hold (see "REST door").
 
 ## Identity contract
 
@@ -142,15 +144,16 @@ The two staff actions use the same `subCategory: 'mcp'` as the other tool action
 - **A session token can't be forged,** so the identity can't be either. This plugin never accepts identity as a tool argument.
 - **The helper is exposed as `strapi.plugin('maison').service('identity').getCustomerSubject(extra)`,** so app-level tools can reuse it.
 
-## Four surfaces
+## Five surfaces
 
-One set of Maison services serves four surfaces. Each surface calls the same service method under the same permission, so staff get the same answer however they ask.
+One set of Maison services serves five surfaces. Each surface calls the same service methods, so customers, agents and staff get the same answer however they ask. Each one checks who is calling in its own way, shown in the Gate column.
 
 | Surface | Used by | Reaches the services through | Gate |
 |---|---|---|---|
 | MCP tools on `/mcp` | The customer app, its concierge, an ops agent in Claude Desktop | `strapi.ai.mcp.registerTool` in `register()` | The token's Maison permissions (`auth.policies`) |
+| REST routes at `/api/maison` | Websites and other apps | Content-API routes and controllers that parse input with the tools' own schemas (see "REST door") | The catalog: a users-permissions role or an API token holding the route's action. Bookings: a LINE customer session, through the `customer-session` policy |
 | In-admin chat | Staff, through `strapi-plugin-tanstack-ai` 1.6.0 | The `ai-tools` service, built from the MCP tool definitions | The signed-in admin's role, one action per tool |
-| Maison admin page | Staff | Admin routes under `/maison` | `admin::hasPermissions` |
+| Maison admin page and Homepage widget | Staff | Admin routes under `/maison` | `admin::hasPermissions` |
 | Content Manager | Staff | Strapi's own editing and Publish | Content Manager permissions |
 
 In the talk, staff ask the chat about new requests and confirm one. The ops agent in Claude Desktop then sends the LINE confirmation with the existing tools, and the requests board shows each step land.
@@ -166,7 +169,8 @@ In the talk, staff ask the chat about new requests and confirm one. The ops agen
   - **Not offered:** `request_appointment` and `my_appointments` need a signed-in LINE customer, and a chat has an admin instead. `record_confirmation` only follows a LINE push, which the ops agent makes. `pending_confirmations` stays on MCP only, because its result carries each customer's full LINE user id.
   - **Disabled tools.** Tools listed in `disabledTools` are left out of the chat as well as MCP.
   - **Zod.** The chat's `@tanstack/ai` 0.52 converts a schema through its Standard JSON Schema (`~standard.jsonSchema`), which zod 4 provides. Maison's schemas come from `@strapi/utils`, which is zod 4.4.3 in Strapi 5.55.1. The chat plugin builds its own tools with the same `z`.
-- **Admin routes and page.** See "Admin page".
+- **Admin routes, page and Homepage widget.** See "Admin page".
+- **REST routes.** See "REST door".
 - **Content Manager.** Publishing an appointment there is the same confirmation as `confirm_appointment` and the board's Confirm button.
 
 **LaunchPad, not this plugin, installs the chat.** The LaunchPad plan (plan 3) installs `strapi-plugin-tanstack-ai` and configures it with `chat: { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: env('ANTHROPIC_API_KEY') }`. Maison only provides the `ai-tools` service. Without the chat plugin, nothing calls it.
@@ -197,7 +201,7 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
 
 `request_appointment`
 
-- **Input:** `boutique` (slug), `productSlugs` (1–5), `requestedFor` (ISO 8601 with offset), `note?` (≤500 chars).
+- **Input:** `boutique` (slug), `productSlugs` (1–5), `requestedFor` (ISO 8601 with offset), `note?` (≤500 chars), `locale?` (the language of the names in the output, default `defaultLocale`).
 - **Checks, in order:**
   1. The subject is present and valid (`not_signed_in`).
   2. The boutique and products exist and are published (`not_found`).
@@ -298,16 +302,42 @@ A "Maison" menu entry, shown to admins who hold `appointments.review` or `demo.m
 - **Load demo catalog:** runs the seed. It's idempotent, and reports what it created.
 - **Reset demo appointments:** deletes all appointments and notifications. The catalog is untouched. The board refreshes right away.
 
+**Homepage widget** (`appointments.review`)
+
+- "Maison requests" (`plugin::maison.requests`) on the admin's Homepage, registered with `app.widgets.register` and shown only to admins who hold `appointments.review`.
+- **Counts:** one pipeline of visits still ahead, with the board's own conditions: waiting for staff, confirmed, and how many of those confirmed visits have had their LINE confirmation sent.
+- **Rows:** the five newest requests, as the board's "All requests" view has them, so the customer is masked.
+- It refreshes every 5 seconds. A failed refresh keeps the last result on screen with a note, and **Open the board** links to the Maison page.
+
 The page uses `@strapi/design-system`, `useFetchClient`, `useNotification`, `useRBAC` and the `Page`/`Layouts` helpers. It calls these admin routes, which are served at `/maison/...` and gated by `admin::isAuthenticatedAdmin` plus `admin::hasPermissions`:
 
 | Route | Permission | Response |
 |---|---|---|
 | `GET /maison/appointments`, query: the `appointment_requests` filters | `appointments.review` | `{ appointments }`. 400 for bad filters, 404 for an unknown boutique. |
+| `GET /maison/appointments/summary` | `appointments.review` | `{ counts: { waitingForStaff, confirmedUpcoming, confirmationsSent }, recent }`, for the Homepage widget, from `appointments.summarizeRequests()`. Registered before any route with a `:reference`, so "summary" is never taken for one. |
 | `POST /maison/appointments/:reference/confirm` | `appointments.confirm` | `{ appointment, alreadyConfirmed }`. 404 for `not_found`, 400 for `in_the_past` or a malformed reference. |
 | `POST /maison/demo/seed` | `demo.manage` | The seed counts |
 | `POST /maison/demo/reset` | `demo.manage` | The reset counts |
 
 Errors use Strapi's error body, with the tools' `code` and `hint` in `details`. The routes validate with the tools' zod inputs and call the same service methods, so the board and the tools can't disagree.
+
+## REST door
+
+Content-API routes, served at `/api/maison/...`, for websites and other apps. Each mirrors a customer tool. It takes the tool's input (query parameters, or the JSON body for a booking), checks it with the tool's own zod schema from `mcp/schemas.ts`, calls the same service, and answers with the tool's structured content.
+
+| Route | Mirrors | Action | Access |
+|---|---|---|---|
+| `GET /api/maison/collections` | `browse_collections` | `plugin::maison.collections.find` | A role or an API token holding the action |
+| `GET /api/maison/products` | `search_products` | `plugin::maison.products.find` | A role or an API token holding the action |
+| `GET /api/maison/products/:slug` | `view_product` | `plugin::maison.products.findOne` | A role or an API token holding the action |
+| `GET /api/maison/boutiques` | `find_boutiques` | `plugin::maison.boutiques.find` | A role or an API token holding the action |
+| `POST /api/maison/appointments` | `request_appointment` | `plugin::maison.customer.requestAppointment` | A LINE customer session. Roles don't apply |
+| `GET /api/maison/my-appointments` | `my_appointments` | `plugin::maison.customer.myAppointments` | A LINE customer session. Roles don't apply |
+
+- **Catalog actions** are named `find` and `findOne`, the only names Strapi lets a read-only API token call. Any role, such as Public, or a read-only, full-access or custom API token can be given them.
+- **Customer routes** set `auth: false`, so users-permissions doesn't refuse a LINE session. The `customer-session` policy runs `/mcp`'s session check (oauth-mcp-manager's `resolveAccessToken`), then resolves the customer as the tools do (`resolveSubject`), and puts them in `ctx.state.maisonCustomer`. A booking never takes the customer from its body, and answers 201 with `createdVia: web`.
+- **Where `/mcp` goes further:** Strapi core also refuses a session once its admin token has expired (`checkExpiry`). The REST door accepts that session until the session itself expires, at most the session TTL of 1 hour. And each tool needs its own permission on that admin token, which the REST door doesn't check. Closing the expiry gap belongs in oauth-mcp-manager (`resolveAccessToken` refusing an expired admin token), in a later release.
+- **Errors:** `{ "error": { "code", "message", "hint" } }`, with the tools' codes, messages and hints: 400 `invalid_input`, 401 `not_signed_in` (with `WWW-Authenticate: Bearer`), 404 `not_found`, 409 `boutique_closed` and `too_many_open_requests`, 422 `in_the_past`, and 503 `not_configured` (no oauth-mcp-manager 1.1) or `temporarily_unavailable` (checking the session failed on the server).
 
 ## Seed data
 
@@ -350,15 +380,20 @@ Shipped in the package: JSON content plus images under `server/seed/`.
 ```
 server/src/
   register.ts            registers tools and the prompt (MCP locks its set at start)
-  bootstrap.ts           registers permission actions
+  bootstrap.ts           registers permission actions, and the middleware that answers the customer-session policy's refusals
   content-types/         six schemas
   services/              identity, errors, catalog, appointments, confirmations, seed, ai-tools (chat)
-  domain/                pure helpers: hours, time, subject (with masking), flex message, text, validation
+  domain/                pure helpers: hours, time, subject (with masking), flex message, text, validation,
+                         failures (errors both doors give), http-result (error codes as HTTP statuses)
+  mcp/schemas.ts         the tools' input and output schemas, shared with the REST routes
   mcp/tools/             one file per tool: schema, description, handler
   mcp/prompts/           send-pending-confirmations.ts
-  routes/ controllers/   admin routes for the requests board, seed and reset
+  routes/                admin routes (the requests board, the widget's summary, seed and reset) and the REST door's routes
+  controllers/           admin: appointments, demo. REST: collections, products, boutiques, customer
+  policies/              customer-session.ts: a LINE customer session for the REST customer routes
+  rest/                  query.ts (query strings into the tools' input types), reply.ts (answers in the REST error body)
 server/seed/             content JSON and images
-admin/src/               Maison page: requests board and demo data
+admin/src/               Maison page (requests board and demo data), and the Homepage widget (components/RequestsWidget.tsx)
 ```
 
 ## Testing

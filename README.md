@@ -21,7 +21,7 @@ Maison is fictional. The plugin uses no real brand's names, products or images.
 | The Maison admin page and Homepage widget | Staff | The admin's role |
 | The Content Manager | Staff | Content Manager permissions |
 
-The tools, the REST routes, the chat and the board call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
+The tools, the REST routes, the chat, the board and the Homepage widget call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
 
 Confirming a request is one act wherever it happens: the `confirm_appointment` tool, the board's **Confirm** button and **Publish** in the Content Manager all publish the appointment. None of them messages the customer. An ops agent sends the LINE confirmation afterwards. One difference: **Publish** in the Content Manager doesn't check the visit time, so it can confirm a visit that has already passed.
 
@@ -154,7 +154,7 @@ Strapi answers some requests itself, in its own error body: a 403 when no role o
 
 ### Grant the catalog
 
-The catalog routes use Strapi's content-API permissions. Either of these may call them:
+The catalog routes use Strapi's content-API permissions, so a request needs one of these:
 - **A role holding their actions,** under **Settings → Users & Permissions plugin → Roles**: **Public** for a public website.
 - **A read-only, full-access or custom API token,** under **Settings → API Tokens**. A custom token needs the actions. A read-only token can call them because they're named `find` and `findOne`, the only actions Strapi lets a read-only token call.
 
@@ -205,7 +205,16 @@ Each tool is offered only to admins whose role holds its permission. The custome
 **Maison** in the admin menu is shown to admins with "MCP: review appointment requests" or "Load and reset demo data":
 - **Appointment requests:** a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead.
 - **Demo data:** **Load demo catalog** and **Reset demo appointments**.
-- **Homepage widget:** **Maison requests** on the admin's Homepage, for admins with "MCP: review appointment requests". It counts one pipeline of visits still ahead: the requests waiting for staff, the confirmed visits, and how many of those have had their LINE confirmation sent. It also lists the five newest requests with the visit time in Tokyo, the boutique, the masked customer and the status. It refreshes every 5 seconds, and **Open the board** goes to the page above. Its numbers come from `GET /maison/appointments/summary`, which calls `appointments.summarizeRequests()`, and follow the board's own definitions. Strapi keeps each admin's Homepage layout once they've changed it, so an admin who has moved or removed widgets adds this one with **Add Widget**.
+
+## The Homepage widget
+
+**Maison requests** on the admin's Homepage is shown to admins with "MCP: review appointment requests":
+- It counts one pipeline of visits still ahead: the requests waiting for staff, the confirmed visits, and how many of those have had their LINE confirmation sent.
+- It lists the five newest requests with the visit time in Tokyo, the boutique, the masked customer and the status.
+- It refreshes every 5 seconds. If a refresh fails, it keeps the last result on screen with a note.
+- **Open the board** goes to the Maison page.
+
+Its numbers come from `GET /maison/appointments/summary`, which calls `appointments.summarizeRequests()` and follows the board's own definitions. Strapi keeps each admin's Homepage layout once they've changed it, so an admin who has moved or removed widgets adds this one with **Add Widget**.
 
 ## Tokens
 
