@@ -18,7 +18,7 @@
         { "weekday": "sat", "opens": "11:00", "closes": "20:00" },
         { "weekday": "sun", "opens": "11:00", "closes": "20:00" }
       ],
-      "image": "boutique-ginza.png"
+      "image": "boutique-ginza.jpg"
     },
     {
       "slug": "omotesando",
@@ -34,7 +34,7 @@
         { "weekday": "sat", "opens": "11:00", "closes": "20:00" },
         { "weekday": "sun", "opens": "11:00", "closes": "20:00" }
       ],
-      "image": "boutique-omotesando.png"
+      "image": "boutique-omotesando.jpg"
     },
     {
       "slug": "osaka",

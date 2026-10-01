@@ -1,14 +1,16 @@
 # Seed image sources
 
-The demo catalog's images live in this folder, and `server/seed/content.json` names each one. Sixteen are photos from [Pexels](https://www.pexels.com/). The other two are placeholders that this repo still generates.
+The demo catalog's images live in this folder, and `server/seed/content.json` names each one. All eighteen are photos from [Pexels](https://www.pexels.com/).
 
 ## Photos
 
-The photos are used under the [Pexels License](https://www.pexels.com/license/): free to use and modify, and attribution isn't required. The credits are given anyway. Each photo is a 1200 × 1200 px JPEG, the same size as the placeholders.
+The photos are used under the [Pexels License](https://www.pexels.com/license/): free to use and modify, and attribution isn't required. The credits are given anyway. Each photo is a 1200 × 1200 px JPEG, the size the generated placeholders had.
 
 | File | Pexels photo page | Photographer | Edit |
 | --- | --- | --- | --- |
-| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | Three signs on buildings blurred: two lit logos, rooftop lettering and a hotel's name |
+| `boutique-ginza.jpg` | [Modern Clothing Store in Warsaw Display](https://www.pexels.com/photo/modern-clothing-store-in-warsaw-display-37549254/) | Anna Lupa | None |
+| `boutique-omotesando.jpg` | [Modern Office Building in Tokyo in Black and White](https://www.pexels.com/photo/modern-office-building-in-tokyo-in-black-and-white-20472153/) | Tokuo Nobuhiro | None |
+| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | Three areas blurred to hide signs: a pair of lit logos, rooftop lettering and a hotel's name |
 | `collection-atelier.jpg` | [Tools and Leather Lying on a Desk in a Leather Crafting Workshop](https://www.pexels.com/photo/tools-and-leather-lying-on-a-desk-in-a-leather-crafting-workshop-4452603/) | Vlada Karpovich | None |
 | `collection-gifts.jpg` | [Close-up Shot of Black Gift Boxes](https://www.pexels.com/photo/close-up-shot-of-black-gift-boxes-5872362/) | Max Fischer | None |
 | `collection-voyage.jpg` | [Vintage Black Luggage Stack in Cozy Setting](https://www.pexels.com/photo/vintage-black-luggage-stack-in-cozy-setting-36933446/) | Jonathan Borba | None |
@@ -29,7 +31,7 @@ No photo shows a brand or a recognisable person: labels, dials and signs that ca
 
 ## Generated placeholders
 
-`boutique-ginza.png` and `boutique-omotesando.png` are made by `scripts/generate-seed-images.mjs`: a gradient with the name on it, so there is no third-party imagery in them. Run `node scripts/generate-seed-images.mjs` to make them again. The script only writes the entries whose file name in `content.json` ends in `.png`, and leaves every other file alone. That is why photos are never saved as `.png`.
+None are left: every entry in `content.json` names a photo. `scripts/generate-seed-images.mjs` still draws a gradient placeholder with the name on it for any entry whose file name ends in `.png`, and leaves every other file alone. That is why photos are never saved as `.png`.
 
 ## Replacing an image
 
