@@ -1,17 +1,25 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { SUBJECT_A, SUBJECT_B, bootStrapi } from './harness.mjs';
+import { SUBJECT_A, SUBJECT_B, bootStrapi, tokyoDate, tokyoTime } from './harness.mjs';
 
-// The service is counted at a fixed moment: 09:00 on Thursday 1 October 2026 in Tokyo. The admin route counts at the
-// real clock. Every visit is in 2020 or in 2030, so both clocks tell the same ones from the ones still ahead.
-const NOW = new Date('2026-10-01T00:00:00Z');
+// The service counts at NOW, when this file starts, and the admin route at the real clock a moment later. The visits
+// still ahead are 10, 20 and 30 days out, so both clocks see them ahead, and the tests never expire. The visits that
+// are over were requested as if it were 2020.
+const NOW = new Date();
 const LONG_AGO = new Date('2020-01-01T00:00:00Z');
+const BEFORE_EVERY_VISIT = new Date('2019-12-31T00:00:00Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
+const IN_10_DAYS = tokyoDate(10);
+const IN_20_DAYS = tokyoDate(20);
+const IN_30_DAYS = tokyoDate(30);
 const APPOINTMENT = 'plugin::maison.appointment';
 const NOTIFICATION = 'plugin::maison.notification';
 const REVIEW = 'plugin::maison.appointments.review';
 const CONFIRM = 'plugin::maison.appointments.confirm';
 const ROW_FIELDS = ['boutique', 'confirmationSent', 'customer', 'reference', 'requestedFor', 'status'];
+/** A customer's LINE user ID: their subject without "line:". No staff surface ever shows it. */
+const lineUserIdOf = (subject) => subject.slice('line:'.length);
 
 describe('the requests summary behind the admin homepage widget', () => {
   let strapi;
@@ -53,10 +61,11 @@ describe('the requests summary behind the admin homepage widget', () => {
 
   describe('with requests', () => {
     before(async () => {
-      // Created in this order, so newest first is: late, soon, booked, other, done, gone.
-      // The first two have visits that are over by NOW. They are requested as if it were 2020. `done` is then
+      // Created in this order, so newest first is: late, soon, booked, other, done, early, gone.
+      // gone and done have visits that are over by NOW. They are requested as if it were 2020, and done is then
       // confirmed, with its LINE confirmation sent, before its visit.
       await request('gone', { requestedFor: '2020-01-04T14:00:00+09:00', now: LONG_AGO }); // never confirmed
+      await request('early', { subject: SUBJECT_B, requestedFor: tokyoTime(IN_30_DAYS, '12:00') }); // waits, but is too old for the five newest
       await request('done', {
         subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: '2020-01-05T15:00:00+09:00', now: LONG_AGO,
       });
@@ -64,34 +73,34 @@ describe('the requests summary behind the admin homepage widget', () => {
       await sendConfirmation('done');
       // Still ahead of NOW and of the real clock:
       await request('other', {
-        subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: '2030-01-13T15:00:00+09:00',
+        subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: tokyoTime(IN_20_DAYS, '15:00'),
         createdVia: 'concierge', note: 'For my sister',
       });
       await confirm('other');
       await sendConfirmation('other');
-      await request('booked', { requestedFor: '2030-01-12T14:00:00+09:00' });
+      await request('booked', { requestedFor: tokyoTime(IN_10_DAYS, '14:00') });
       await confirm('booked');
-      await request('soon', { requestedFor: '2030-01-12T16:00:00+09:00' });
-      await request('late', { requestedFor: '2030-01-19T14:00:00+09:00', productSlugs: ['weekender-50', 'passport-cover'] });
+      await request('soon', { requestedFor: tokyoTime(IN_10_DAYS, '16:00') });
+      await request('late', { requestedFor: tokyoTime(IN_30_DAYS, '14:00'), productSlugs: ['weekender-50', 'passport-cover'] });
     });
 
-    it('counts what waits for staff, what is confirmed and ahead, and what LINE has confirmed', async () => {
-      assert.deepEqual((await summarize()).counts, { waitingForStaff: 2, confirmedUpcoming: 2, confirmationsSent: 2 });
+    it('counts what waits for staff, what is confirmed and ahead, and how many of those LINE has confirmed', async () => {
+      // early, soon and late wait; other and booked are confirmed and ahead; LINE has confirmed other.
+      assert.deepEqual((await summarize()).counts, { waitingForStaff: 3, confirmedUpcoming: 2, confirmationsSent: 1 });
     });
 
-    it('leaves a visit that is over out of "waiting" and out of "confirmed, upcoming"', async () => {
+    it('leaves a visit that is over out of all three counts', async () => {
       const now = (await summarize()).counts;
-      assert.equal(now.waitingForStaff, 2, 'gone, requested for a visit in 2020, is not waiting for staff');
+      assert.equal(now.waitingForStaff, 3, 'gone, requested for a visit in 2020, is not waiting for staff');
       assert.equal(now.confirmedUpcoming, 2, 'done, confirmed for a visit in 2020, is not upcoming');
-      // The same requests, counted before their visits, bring both back.
-      const earlier = (await summarize(new Date('2019-12-31T00:00:00Z'))).counts;
-      assert.equal(earlier.waitingForStaff, 3);
-      assert.equal(earlier.confirmedUpcoming, 3);
+      assert.equal(now.confirmationsSent, 1, "done's LINE confirmation was for a visit that is over");
+      // The same requests, counted before their visits, bring all three back.
+      assert.deepEqual((await summarize(BEFORE_EVERY_VISIT)).counts, { waitingForStaff: 4, confirmedUpcoming: 3, confirmationsSent: 2 });
     });
 
     it('lists the five newest requests, newest first, whatever their status or visit time', async () => {
       const { recent } = await summarize();
-      assert.deepEqual(recent.map((row) => row.reference), [refs.late, refs.soon, refs.booked, refs.other, refs.done], 'gone, the oldest, is left out');
+      assert.deepEqual(recent.map((row) => row.reference), [refs.late, refs.soon, refs.booked, refs.other, refs.done], 'early and gone, the two oldest, are left out');
       assert.deepEqual(recent.map((row) => row.status), ['requested', 'requested', 'confirmed', 'confirmed', 'confirmed']);
       assert.deepEqual(recent.map((row) => row.confirmationSent), [false, false, false, true, true]);
       assert.deepEqual(recent[0], {
@@ -99,7 +108,7 @@ describe('the requests summary behind the admin homepage widget', () => {
         status: 'requested',
         customer: 'line:Uaaa…aa',
         boutique: { slug: 'ginza', name: '銀座本店' },
-        requestedFor: '2030-01-19T14:00:00+09:00',
+        requestedFor: tokyoTime(IN_30_DAYS, '14:00'),
         confirmationSent: false,
       });
       for (const row of recent) assert.deepEqual(Object.keys(row).sort(), ROW_FIELDS);
@@ -116,24 +125,25 @@ describe('the requests summary behind the admin homepage widget', () => {
       );
       assert.deepEqual(recent.map((row) => row.customer), ['line:Uaaa…aa', 'line:Uaaa…aa', 'line:Uaaa…aa', 'line:Ubbb…bb', 'line:Ubbb…bb']);
       const text = JSON.stringify(recent);
-      assert.ok(!text.includes('a'.repeat(32)) && !text.includes('b'.repeat(32)), 'never a LINE user ID');
+      for (const [who, subject] of [["A's", SUBJECT_A], ["B's", SUBJECT_B]]) assert.ok(!text.includes(lineUserIdOf(subject)), `never ${who} LINE user ID`);
       assert.ok(!text.includes('For my sister'), "none of the customer's note");
     });
 
     it("agrees with the board's own views at any moment, boundaries included", async () => {
-      // 05:00Z on 12 January 2030 is 14:00 in Tokyo, when `booked` starts. 07:00Z is when `soon` does.
+      // Before every visit, now, when booked and when soon start and a second after each, and after every visit.
+      const bookedStarts = Date.parse(tokyoTime(IN_10_DAYS, '14:00'));
+      const soonStarts = Date.parse(tokyoTime(IN_10_DAYS, '16:00'));
       for (const at of [
-        '2019-12-31T00:00:00Z', '2026-10-01T00:00:00Z', '2030-01-12T05:00:00Z', '2030-01-12T05:00:01Z',
-        '2030-01-12T07:00:00Z', '2030-01-12T07:00:01Z', '2031-01-01T00:00:00Z',
+        BEFORE_EVERY_VISIT.getTime(), NOW.getTime(), bookedStarts, bookedStarts + 1000, soonStarts, soonStarts + 1000, NOW.getTime() + 400 * DAY_MS,
       ]) {
         const now = new Date(at);
         const view = async (status) => (await appointments.listRequests({ status, limit: 50, now })).value;
-        const ahead = (row) => Date.parse(row.requestedFor) >= now.getTime();
+        const confirmedAhead = (await view('confirmed')).filter((row) => Date.parse(row.requestedFor) >= at);
         assert.deepEqual((await summarize(now)).counts, {
           waitingForStaff: (await view('requested')).length,
-          confirmedUpcoming: (await view('confirmed')).filter(ahead).length,
-          confirmationsSent: (await view('all')).filter((row) => row.confirmationSent).length,
-        }, at);
+          confirmedUpcoming: confirmedAhead.length,
+          confirmationsSent: confirmedAhead.filter((row) => row.confirmationSent).length,
+        }, now.toISOString());
       }
     });
 
@@ -146,15 +156,16 @@ describe('the requests summary behind the admin homepage widget', () => {
         assert.equal(board.requestedFor, '2020-01-06T14:00:00+09:00', 'the board shows the draft time');
         assert.equal((await summarize()).counts.confirmedUpcoming, 1, 'so booked no longer counts as upcoming');
       } finally {
-        await strapi.documents(APPOINTMENT).update({ documentId: draft.documentId, data: { requestedFor: '2030-01-12T14:00:00+09:00' } });
+        await strapi.documents(APPOINTMENT).update({ documentId: draft.documentId, data: { requestedFor: tokyoTime(IN_10_DAYS, '14:00') } });
       }
       assert.equal((await summarize()).counts.confirmedUpcoming, 2);
     });
 
-    it('counts an appointment once however many `sent` records it has, and ignores failed attempts and records of deleted appointments', async () => {
+    it('counts a confirmed upcoming visit once however many `sent` records it has, and no other record', async () => {
       const records = [
-        { appointmentReference: refs.other, outcome: 'sent' }, // a second `sent` for an appointment that has one
+        { appointmentReference: refs.other, outcome: 'sent' }, // a second `sent` for a visit that has one
         { appointmentReference: refs.booked, outcome: 'failed' }, // an attempt that did not reach the customer
+        { appointmentReference: refs.soon, outcome: 'sent' }, // a request staff haven't confirmed
         { appointmentReference: 'APT-0000', outcome: 'sent' }, // an appointment that no longer exists
       ];
       const created = [];
@@ -162,7 +173,7 @@ describe('the requests summary behind the admin homepage widget', () => {
         created.push(await strapi.documents(NOTIFICATION).create({ data: { channel: 'line', sentAt: NOW.toISOString(), detail: 'test', ...record } }));
       }
       try {
-        assert.equal((await summarize()).counts.confirmationsSent, 2);
+        assert.equal((await summarize()).counts.confirmationsSent, 1, 'other, and only other');
       } finally {
         for (const { documentId } of created) await strapi.documents(NOTIFICATION).delete({ documentId });
       }
@@ -198,6 +209,23 @@ describe('the requests summary behind the admin homepage widget', () => {
     };
 
     before(async () => {
+      // Requests of its own, so this passes on its own too: three wait for staff, two are confirmed and ahead, and LINE
+      // has confirmed one of those. One more, confirmed and sent in 2020, is over and the oldest, so it shows nowhere.
+      await strapi.plugin('maison').service('seed').resetDemoAppointments();
+      await request('pastSentB', {
+        subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: '2020-01-05T15:00:00+09:00', now: LONG_AGO,
+      });
+      await confirm('pastSentB', new Date('2020-01-02T00:00:00Z'));
+      await sendConfirmation('pastSentB');
+      await request('waitingA', { requestedFor: tokyoTime(IN_10_DAYS, '12:00') });
+      await request('waitingB', { subject: SUBJECT_B, boutique: 'omotesando', productSlugs: ['passport-cover'], requestedFor: tokyoTime(IN_20_DAYS, '12:00') });
+      await request('confirmedB', { subject: SUBJECT_B, requestedFor: tokyoTime(IN_20_DAYS, '13:00') });
+      await confirm('confirmedB');
+      await request('sentA', { requestedFor: tokyoTime(IN_30_DAYS, '13:00') });
+      await confirm('sentA');
+      await sendConfirmation('sentA');
+      await request('waitingA2', { requestedFor: tokyoTime(IN_30_DAYS, '15:00') });
+
       reviewer = await adminWith('reviewer', [REVIEW]);
       confirmer = await adminWith('confirmer', [CONFIRM]); // holds a Maison permission, but not the one for reviewing
       await new Promise((resolve, reject) => {
@@ -221,12 +249,17 @@ describe('the requests summary behind the admin homepage widget', () => {
     it('answers an admin with appointments.review the counts and the five newest requests', async () => {
       const { status, body } = await get('/maison/appointments/summary', reviewer);
       assert.equal(status, 200, JSON.stringify(body));
-      assert.deepEqual(body.counts, { waitingForStaff: 2, confirmedUpcoming: 2, confirmationsSent: 2 });
-      assert.deepEqual(body.recent.map((row) => row.reference), [refs.late, refs.soon, refs.booked, refs.other, refs.done]);
+      assert.deepEqual(body.counts, { waitingForStaff: 3, confirmedUpcoming: 2, confirmationsSent: 1 });
+      assert.deepEqual(body.recent.map((row) => row.reference), [refs.waitingA2, refs.sentA, refs.confirmedB, refs.waitingB, refs.waitingA]);
+      assert.deepEqual(
+        body.recent.map((row) => [row.status, row.confirmationSent]),
+        [['requested', false], ['confirmed', true], ['confirmed', false], ['requested', false], ['requested', false]]
+      );
       assert.deepEqual(body.recent[0].boutique, { slug: 'ginza', name: '銀座本店' });
-      assert.equal(body.recent[0].customer, 'line:Uaaa…aa');
+      assert.deepEqual(body.recent.map((row) => row.customer), ['line:Uaaa…aa', 'line:Uaaa…aa', 'line:Ubbb…bb', 'line:Ubbb…bb', 'line:Uaaa…aa']);
       for (const row of body.recent) assert.deepEqual(Object.keys(row).sort(), ROW_FIELDS);
-      assert.ok(!JSON.stringify(body).includes('a'.repeat(32)), 'never a LINE user ID');
+      const text = JSON.stringify(body);
+      for (const [who, subject] of [["A's", SUBJECT_A], ["B's", SUBJECT_B]]) assert.ok(!text.includes(lineUserIdOf(subject)), `never ${who} LINE user ID`);
     });
 
     it('is not taken for an appointment reference, and leaves the board route alone', async () => {

@@ -68,8 +68,21 @@ const RequestsWidget = () => {
   if (summary === null) {
     return loadError === null ? <Widget.Loading /> : <Widget.Error>{`Couldn't load the requests: ${loadError}`}</Widget.Error>;
   }
+
+  // After a failed refresh, the last summary stays on screen with this note, until a refresh works again.
+  const staleNote = loadError && (
+    <Typography variant="pi" textColor="danger600">
+      Couldn't refresh: {loadError}. Showing the last result.
+    </Typography>
+  );
+
   if (summary.recent.length === 0) {
-    return <Widget.NoData>No requests yet</Widget.NoData>;
+    return (
+      <Flex direction="column" alignItems="stretch" gap={3} height="100%">
+        <Widget.NoData>No requests yet</Widget.NoData>
+        {staleNote}
+      </Flex>
+    );
   }
 
   return (
@@ -112,11 +125,7 @@ const RequestsWidget = () => {
         ))}
       </Flex>
 
-      {loadError && (
-        <Typography variant="pi" textColor="danger600">
-          Couldn't refresh: {loadError}. Showing the last result.
-        </Typography>
-      )}
+      {staleNote}
     </Flex>
   );
 };

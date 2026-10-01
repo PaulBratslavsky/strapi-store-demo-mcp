@@ -4,7 +4,7 @@
 
 ### Added
 
-- **A "Maison requests" widget on the admin Homepage** (`plugin::maison.requests`), for admins with "MCP: review appointment requests". It counts the requests waiting for staff, the confirmed visits still ahead and the LINE confirmations sent, lists the five newest requests, and refreshes every 5 seconds.
+- **A "Maison requests" widget on the admin Homepage** (`plugin::maison.requests`), for admins with "MCP: review appointment requests". It counts one pipeline of visits still ahead (the requests waiting for staff, the confirmed visits, and how many of those have had their LINE confirmation sent), lists the five newest requests, and refreshes every 5 seconds.
   - `GET /maison/appointments/summary`, an admin route gated on the same permission as the board's list. It answers `{ counts, recent }` from the new `appointments.summarizeRequests()`, which counts with the board's own definitions and returns the board's "All requests" rows, masked the same way.
 - **REST routes at `/api/maison`**, on the same services, input schemas and LINE customer identity as the MCP tools:
   - `GET /collections`, `GET /products`, `GET /products/:slug` and `GET /boutiques`, as `browse_collections`, `search_products`, `view_product` and `find_boutiques`. Their actions are `plugin::maison.collections.find`, `products.find`, `products.findOne` and `boutiques.find`. Grant them to a role such as Public, or call with a read-only, full-access or custom API token.
