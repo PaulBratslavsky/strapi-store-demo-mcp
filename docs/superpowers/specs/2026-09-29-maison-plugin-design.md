@@ -83,7 +83,7 @@ Publishing an appointment **is** the staff confirmation.
 | `products` | relation, many-to-many → `product` | 1–5 |
 | `requestedFor` | datetime, required | |
 | `customerNote` | text, max 500 | |
-| `createdVia` | enumeration: `concierge`, `app` | Informational |
+| `createdVia` | enumeration: `concierge`, `app`, `web` | Informational. `web` for a request made through the REST routes (`POST /api/maison/appointments`) |
 
 ### `notification`: no drafts, not localized, append-only
 
@@ -204,7 +204,7 @@ Registered in `register()` with `strapi.ai.mcp.registerTool`, using zod from `@s
   3. `requestedFor` is at least 30 minutes from now (`in_the_past`).
   4. It's within the boutique's opening hours in the configured timezone (`boutique_closed`, whose hint lists that day's hours).
   5. The customer has fewer than `maxOpenRequestsPerCustomer` unpublished future requests (`too_many_open_requests`).
-- **Action:** creates a **draft** appointment. `createdVia` is `concierge` when the request carries `x-maison-surface: concierge` (informational, not trusted), otherwise `app`. The record is read back.
+- **Action:** creates a **draft** appointment. `createdVia` is `concierge` when the request carries `x-maison-surface: concierge` (informational, not trusted), otherwise `app`. The REST route `POST /api/maison/appointments` makes the same request with `createdVia: web`. The record is read back.
 - **Output:** `{ appointment: { reference, status: "requested", boutique: { slug, name }, requestedFor, products: [{ slug, name }], note } }`
 
 `my_appointments`
@@ -231,6 +231,7 @@ Staff tools act as whoever holds the token or admin session. They never take or 
   - `all` lists everything, including unconfirmed requests whose time has passed.
 - **Order:** `requested` by visit time, soonest first. `confirmed` and `all` newest request first (`createdAt`).
 - **Output:** `{ appointments: [{ reference, status, customer, boutique: { slug, name } | null, requestedFor, products: [{ slug, name }], note, createdVia, confirmationSent, createdAt }] }`
+  - `createdVia` is `concierge`, `app` or `web`.
   - `customer` is masked: `line:U`, three characters, `…`, the last two, as in `line:U4af…88`. Anything that isn't a valid subject shows as `unknown`. The full subject is never returned.
   - `requestedFor` and `createdAt` are ISO 8601 in the configured timezone, via `toZonedIso`.
 - **Labels** come from published versions, in `locale` with a fallback to `defaultLocale`, and never from drafts. A boutique that's no longer published is `null`, and an unpublished product is left out.
