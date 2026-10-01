@@ -209,12 +209,17 @@ Each tool is offered only to admins whose role holds its permission. The custome
 ## The Homepage widget
 
 **Maison requests** on the admin's Homepage is shown to admins with "MCP: review appointment requests":
-- It counts one pipeline of visits still ahead: the requests waiting for staff, the confirmed visits, and how many of those have had their LINE confirmation sent.
-- It lists the five newest requests with the visit time in Tokyo, the boutique, the masked customer and the status.
+- Three cards count one pipeline of visits still ahead: **Waiting for staff**, **Confirmed, upcoming**, and **LINE sent**, the confirmed visits whose LINE confirmation has been sent. They wrap when the widget is narrow.
+- Below them, a table lists the five newest requests, newest first. A narrow widget scrolls it sideways. Its columns are:
+  - **Requested:** how long ago the request came in, like "12 min ago", and from a day on its date, like "Oct 1". Hover for the full date and time.
+  - **Reference**, **Customer** (masked, like `line:U4af…88`) and **Boutique**.
+  - **Visit:** the visit time in Tokyo.
+  - **Note:** what the customer wrote, cut to one line. Hover for all of it. A dash when there is none.
+  - **Status** and **LINE** ("LINE sent" or "not sent"), in the words and colours of the board.
 - It refreshes every 5 seconds. If a refresh fails, it keeps the last result on screen with a note.
-- **Open the board** goes to the Maison page.
+- **Open the board** goes to the Maison page. It shows the same three cards above the board, and the board has a **Note** column too, where the whole note wraps instead of being cut.
 
-Its numbers come from `GET /maison/appointments/summary`, which calls `appointments.summarizeRequests()` and follows the board's own definitions. Strapi keeps each admin's Homepage layout once they've changed it, so an admin who has moved or removed widgets adds this one with **Add Widget**.
+Its numbers and rows come from `GET /maison/appointments/summary`, which calls `appointments.summarizeRequests()` and follows the board's own definitions. Each row is a row of the board's "All requests" view, without the products and `createdVia`: its `createdAt` is when the request came in, and its `note` is what the customer wrote. Strapi keeps each admin's Homepage layout once they've changed it, so an admin who has moved or removed widgets adds this one with **Add Widget**.
 
 ## Tokens
 

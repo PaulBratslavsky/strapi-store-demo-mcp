@@ -20,3 +20,4 @@
 - The customer tools' input schemas live in `server/src/mcp/schemas.ts`, shared with the REST routes. Apart from `request_appointment`'s `locale`, the tools' inputs, outputs and errors are unchanged.
 - A failed customer lookup is logged without oauth-mcp-manager's error message, which could quote the token.
 - Demo catalog photos from Pexels replace the generated images, apart from two boutiques that keep their placeholders. See `server/seed/images/SOURCES.md`.
+- The Homepage widget shows its three counts as cards and its five newest requests as a table, with when each request came in and the customer's note, and the Maison page shows the same cards above the board, whose rows show the note too. The `recent` rows of `GET /maison/appointments/summary` gain `createdAt` and `note`.
