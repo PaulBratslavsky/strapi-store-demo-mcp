@@ -4,17 +4,42 @@
 
 > **Rewritten 2026-09-30 for a new host.** The demo moves out of LaunchPad into `maison-demo`, a standalone repo that QBurst and anyone else can clone and run. It becomes public on GitHub when Paul says so.
 > - **Tasks 1–4 port the reviewed LaunchPad commits** (`d3dfff8`, `825c2ca`, `6b68b8f`, and `7ff5816` with `865fa25`) rather than rebuilding them, with the fixes their reviews deferred.
-> - **Tasks 5–9 keep their design.** Their paths, commands, ports and scripts are the new repo's.
+> - **Tasks 5–8 keep their design.** Their paths, commands, ports and scripts are the new repo's.
 > - **No in-admin chat.** Paul dropped strapi-plugin-tanstack-ai: the demo's story is customers' agents working with the store's data over Strapi MCP, with LINE as the identity and messaging channel. Staff confirm on the Maison board. The concierge keeps its model choice.
 > - **The port was run on 30 September** in a scratch copy of the repo. See "Verified on 30 September" at the end.
 
+> **Amended later on 30 September: a LINE MINI App-ready app, and the real app inside LINE.** Paul asked to finish the integration as a LINE MINI App ([Get started with LINE MINI App](https://developers.line.biz/en/docs/line-mini-app/quickstart/)). Under LINE's MINI App Policy (effective 19 February 2026), only these may create one ([LINE MINI App Policy](https://terms2.line.me/LINE_MINI_App?lang=en)):
+> - individuals in Japan, Taiwan or Thailand
+> - organizations with a Japanese corporate number, or a Taiwanese or Thai tax ID
+>
+> So Paul can't create a MINI App channel. A MINI App is a LIFF app on a MINI App channel, and LINE recommends creating new LIFF apps as MINI Apps ([news, 12 February 2025](https://developers.line.biz/en/news/2025/02/12/line-mini-app/)). So:
+> - **The app follows LINE's MINI App design guidelines,** in the tasks that own the code:
+>   - Task 3: the landscape safe area, and the stage frame only on the laptop
+>   - Tasks 5–7: LINE's loading icon, downloaded with Paul's OK
+>   - Task 8: tests for both
+>   - Task 9: the channel icon
+> - **The real app inside LINE is a tested path (Task 9),** no longer only a README option:
+>   - Paul's LINE Login channel and LIFF app, and one ngrok origin
+>   - the app proxies Strapi's `/mcp`, token endpoint and `/uploads`, so Strapi's admin stays on the laptop
+>   - one command switches between local and LINE mode, and the tunnel refuses to open while a mock could sign anyone in
+> - **The README is now Task 10.** The app inside LINE is its tested option B. The mock stays the default and the stage's fallback, and the README adds "Run it as a LINE MINI App" for QBurst.
+> - **The pre-flight scan's rulings are in too:**
+>   - Task 1: zsh-safe file lists, and the commit Step 3 copied
+>   - Task 3: an install that doesn't re-run Strapi's
+>   - stop points around Controller and Paul steps
+>   - Task 8: the cleared-date, list-search and token-cleanup checks
+>   - Task 10: a count-only secret check
+> - **Task 1's review rulings, mirrored:** the root `.gitignore` covers every `.env`, Strapi binds 127.0.0.1, and `predevelop` checks the shared `@strapi/utils`. The app binds 127.0.0.1 too (Tasks 3 and 9).
+> - **Commits go on `feat/maison-demo`,** each with a `Co-Authored-By` trailer. `main` holds the root commit, and the PR into it waits for Paul.
+> - **Paul's LINE values** (his LIFF ID, channel ID and ngrok domain) are never in this plan, the README or a commit. They live in `liff/.env` only.
+
 **Goal:** Run the whole "UX to AX" demo on one laptop, from a repo anyone can run with `git clone`, `npm install`, `npm run dev` and `npm run setup`:
 - a fresh Strapi 5.55.1 app with the Maison plugin as a local plugin, and oauth-mcp-manager 1.1 from npm
-- a LIFF-based Maison app, with catalog screens, an agent view and a concierge, running in a browser at phone size with LINE sign-in simulated by LIFF Mock
+- a LIFF-based Maison app, with catalog screens, an agent view and a concierge, running in a browser at phone size with LINE sign-in simulated by LIFF Mock, and, as a tested option, inside LINE on Paul's phone through his own LIFF app and one ngrok tunnel
 - staff in the Strapi admin: the Maison requests board, and the Content Manager
 - Claude Desktop as the ops agent
 - for the concierge, a local model through Ollama by default, or Claude Sonnet 5 when an API key is set
-- a README that is both the quick start for others and the runbook: the run, the backup video, options A and B, and the handoff to QBurst
+- a README that is both the quick start for others and the runbook: the run, the backup video, options A and B (B is the app inside LINE), and the handoff to QBurst, who run it as a LINE MINI App
 
 **Architecture:**
 - **One repo, two apps, npm.** `strapi/` and `liff/` each have their own `package.json` and lockfile. The root `package.json`'s `npm install` installs both and creates their `.env` files with fresh secrets. `npm run dev` starts Strapi, the app and the LINE verify mock, and `npm run setup` loads the demo into a running Strapi.
@@ -28,6 +53,10 @@
 - **Staff** see requests on the Maison board in the Strapi admin, and confirm them there. The board's admin routes check the signed-in admin's role. Publishing an appointment in the Content Manager confirms it too.
 - **The ops agent** is Claude Desktop with the "Maison ops" token. It runs Maison's `send_pending_confirmations` prompt.
 - **A local stand-in for LINE's verify endpoint** runs with the app.
+- **LINE mode** (Task 9) runs the app's production build behind one ngrok origin.
+  - The app proxies Strapi's `/mcp`, token endpoint and `/uploads`, so the phone needs only the app's origin, and Strapi's admin stays on the laptop.
+  - `npm run mode:line` and `npm run mode:local` switch the two `.env` files.
+  - `npm run tunnel` refuses while the verify mock or the LIFF mock could sign anyone in.
 
 **Tech stack** (versions checked on npm on 30 September):
 - Strapi 5.55.1 from `create-strapi@5.55.1` (5.56.0 is the latest), with every `@strapi` package held at 5.55.1 by npm `overrides`
@@ -39,6 +68,7 @@
 - Ollama 0.34 with `qwen3-14b-32k` (Qwen3 14B with a 32k context; it calls tools)
 - vitest, Playwright, and `concurrently` 9
 - Claude Desktop with `mcp-remote`
+- for LINE mode: the ngrok agent (3.34.1 on this laptop, at `/opt/homebrew/bin/ngrok`) on Paul's free account, with its dev domain
 
 **Spec:** `docs/superpowers/specs/2026-09-29-launchpad-liff-demo-design.md` in the strapi-store-demo-mcp repo, now the maison-demo design (the file keeps its name), with the overview `2026-09-29-ax-luxury-demo-overview.md`.
 
@@ -66,12 +96,18 @@ This plan relies on how the plugins behave:
   - `channelId` must be digits, and setting `verifyUrl` logs a warning at startup.
   - The token endpoint answers `invalid_grant` (400) when LINE rejects the ID token. It answers `temporarily_unavailable` (503, with `Retry-After`) when LINE answers 408 or 429, can't be reached, or the LINE client needs an admin's attention.
   - A new session is checked against its client again after LINE answers, so deleting or deactivating the client ends sign-ins in flight.
+  - The OAuth client holds no LINE channel. `identityProviders.line.channelId` does, from `LINE_LOGIN_CHANNEL_ID`, and Strapi reads it at start. The token endpoint stores `resource` without checking it.
+  - Its metadata and `WWW-Authenticate` use `server.url` when it's absolute (`PUBLIC_URL`), so in LINE mode they name the public origin.
+- **Strapi 5.55.1's MCP server** answers each `POST /mcp` with a server-sent event stream (it's stateless), and `GET` and `DELETE` with 405.
+  - With an absolute `server.url` on the admin's own origin, the admin panel still calls its backend on the page's origin (`@strapi/strapi/dist/src/node/create-build-context.js`).
+  - So `http://localhost:1338/admin` keeps working when `PUBLIC_URL` is the tunnel's https origin.
 
 ## Global constraints
 
 - **Repo:** `/Users/paul/work/maison-demo`, a new git repo on `main`, created in Task 1.
-  - It has no remote until Paul says to publish it (Task 9). Then it becomes `PaulBratslavsky/maison-demo` on GitHub, public.
-  - Commit on `main`: the repo is new, with no remote and no hooks, and its first push creates it on GitHub.
+  - It has no remote until Paul says to publish it (Task 10). Then it becomes `PaulBratslavsky/maison-demo` on GitHub, public.
+  - **Commits go on `feat/maison-demo`.** `main` holds only the root commit (Task 1): Paul's hook refuses commits on the default branch, and his rule is branch, commit, PR, merge. The PR from `feat/maison-demo` into `main` waits for Paul (Task 10), and merging is his call.
+  - **Every commit message ends with a `Co-Authored-By:` trailer** for the model that wrote it. The commit steps write it as `-m "Co-Authored-By: <your model> <noreply@anthropic.com>"`: put your model's name, as Claude Code gives it, in place of `<your model>`.
   - Stage explicit paths. Each commit step also checks that no `.env`, `node_modules`, `dist`, `.tmp` or database file is staged.
 - **npm everywhere.** The root, `strapi/`, `liff/` and `strapi/src/plugins/maison/` each have their own `package.json` and `package-lock.json`, and all four lockfiles are committed. There are no workspaces:
   - Maison installs its own dependencies in its own folder (Paul's decision).
@@ -79,29 +115,49 @@ This plan relies on how the plugins behave:
   - `npm install` at the root installs `strapi/` and `liff/`, and `strapi/`'s `postinstall` installs and builds Maison.
 - **One Strapi version.** `strapi/package.json` holds eight `@strapi` packages at 5.55.1 with `overrides`. Without them, npm resolves Strapi's own `^5.0.0` peer ranges to 5.56.0, and the app gets two copies of `@strapi/utils` (Task 1, Step 4). Move the overrides with any Strapi upgrade.
 - **Maison shares Strapi's `@strapi/utils`.** After Maison's build, `strapi/scripts/share-strapi-utils.mjs` removes the plugin's own copy, so Strapi's error middleware recognises its errors: 400, not 500.
-  - `npm install` inside `strapi/src/plugins/maison` brings that copy back. Run `npm install` in `strapi/` after it.
+  - `npm install` inside `strapi/src/plugins/maison` brings that copy back. Stop Strapi, and run `npm install` in `strapi/` after it. Until then, `strapi/`'s `predevelop` check stops Strapi at start (Task 1).
   - The root `npm test` checks it.
 - **The demo's copy of Maison is the plugin repo's files at one commit, unchanged.**
   - The commit is in Task 1's commit message and in the README.
   - To change Maison, change its repo, then copy it again (README, "The Maison plugin in this repo").
   - What the demo changes about Maison lives outside the copy: the extension in `strapi/src/extensions/maison/`.
-- **The plugins always load.** There's no switch and no separate database file: the app's `strapi/.tmp/data.db` is the demo database. To start over, stop Strapi and delete it.
+- **The plugins always load.** There's no switch and no separate database file: the app's `strapi/.tmp/data.db` is the demo database. To start over, stop Strapi, and delete it together with the uploaded images in `strapi/public/uploads/` (README, "Start over with a clean database").
 - **Ports:** Strapi on 1338, the app on 3003, and the LINE verify mock on 127.0.0.1:4545. These are the demo's defaults, so it runs next to a stock Strapi on 1337.
   - On Paul's laptop, 1337, 1340 and 3000 belong to other apps. Leave them alone.
   - The LaunchPad servers belong to the controller: `maison-strapi` on 1338, `maison-app` on 3003 with its mock on 4545, and the LaunchPad site on 3001. The controller retires them before Task 1 starts the demo's Strapi.
   - LaunchPad's `feat/maison-demo` branch stays as it is, local, as the archive of the ported commits.
+  - In LINE mode the app's production build, `demo-app-line`, takes 3003 instead of `demo-app`. Never both.
+  - **Everything listens on 127.0.0.1 only:**
+    - Strapi (`HOST`, Task 1)
+    - the app (`next dev -H 127.0.0.1`, and `next start -H 127.0.0.1` in LINE mode)
+    - the verify mock
+
+    With 0.0.0.0, anyone on the venue Wi-Fi could register the first admin of a fresh database, or mint customer sessions through the local verify mock and then use the concierge on Paul's API key. Phones reach the app only through the ngrok tunnel, which connects on this machine.
 - **The controller owns the long-running dev servers,** through Claude Code's preview runner (`.claude/launch.json` in the controller's workspace):
   - `demo-strapi`: the demo's Strapi on 1338 (Task 1)
   - `demo-app`: the Maison app on 3003, with the LINE verify mock on 127.0.0.1:4545 (Task 3)
+  - `demo-app-line`: the app's LINE-mode build on 3003, without the verify mock (Task 9)
   - Implementers never start, stop or restart them. Steps that need one are marked **Controller:**.
   - Short-lived processes that a test or a check starts and stops itself are fine. These include Playwright's `webServer`, the verify mock inside a test or a check, and Maison's integration tests, which boot Strapi in-process on their own database files.
   - Commands that need Strapi use `http://localhost:1338`, the default in every script and test.
+- **Never re-run strapi/'s install while `demo-strapi` runs.**
+  - Why: `strapi develop` reloads when its lockfiles change, partway through Maison's reinstall and rebuild, and then crashes or answers 500s.
+  - After Task 1, installs are `npm install --prefix liff`, plus `npm install --ignore-scripts` at the root when its `package.json` changes, then `node scripts/init-env.mjs`.
+  - Task 10's fresh clone checks the whole chain.
+- **Stop points.** An implementer stops before a **Controller:** or **Paul:** step, reports, and is resumed at the step after it.
+  - Task 1 stops after Step 7, and resumes at Step 9 once `demo-strapi` runs.
+  - Tasks 7, 9 and 10 say where they stop.
 - **Secrets:**
   - `npm install` creates `strapi/.env` and `liff/.env` from their `.env.example` files (`scripts/init-env.mjs`). It generates Strapi's keys and the demo admin's password, and leaves both files mode 600. They're never printed, logged or committed. To see which keys an `.env` has, list names only: `sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' strapi/.env`.
   - **The demo admin** is `DEMO_ADMIN_EMAIL` (`admin@maison.example`) and `DEMO_ADMIN_PASSWORD` (generated), in `strapi/.env`. `npm run setup` registers it as the first admin of a fresh database. Scripts and tests sign in with it through `node --env-file`.
   - **Paul signs in himself.** He opens `strapi/.env` in his editor and reads the two values. Claude never types a credential into a browser, so every check inside the Strapi admin is Paul's step. The Maison app needs no credentials (LIFF mock), so the controller checks it in the preview browser.
   - The ops token lives only in `strapi/.tmp/maison-ops-token`, which is gitignored and mode 600.
   - Strapi allows five admin sign-ins per email every five minutes. The scripts and tests sign in once per run. A 429 means wait, or ask the controller to restart Strapi.
+  - **Paul's LINE values** live only in `liff/.env`, as `LINE_MODE_LIFF_ID`, `LINE_MODE_CHANNEL_ID` and `LINE_MODE_DOMAIN`: his LIFF ID, his LINE Login channel's ID, and his ngrok domain.
+    - They never go in this plan, the README, a commit or a log: the repo goes public.
+    - Plans and docs write `<your LIFF ID>`, `<your channel ID>` and `<your ngrok domain>`.
+    - Scripts check them without printing them, as `node --env-file=liff/.env` does.
+  - **ngrok's config holds Paul's authtoken.** Nobody reads it.
 - **The concierge's model, and the Anthropic key (a prerequisite only Paul can meet):**
   - **The local model is the default.** With no key, the concierge uses `qwen3-14b-32k` on Ollama at `http://localhost:11434/v1`. In `liff/.env`, `OLLAMA_MODEL` changes the model and `OLLAMA_BASE_URL` the server. Ollama 0.34.2 runs on this laptop with that model.
   - **For Claude on stage,** Paul puts `ANTHROPIC_API_KEY`, or `AI_GATEWAY_API_KEY`, in `liff/.env`. Claude never reads, prints or types it.
@@ -112,13 +168,24 @@ This plan relies on how the plugins behave:
   - It stays in memory: no `localStorage`, no cookies.
   - The concierge route forwards it and adds no credential of its own.
 - **Only call LIFF in the browser,** inside effects or event handlers. `@line/liff` throws during server rendering.
+- **LINE mode and the tunnel** (Task 9):
+  - Only Paul signs in to LINE, ngrok or any console, and only Paul starts the tunnel (`npm run tunnel`).
+  - **A tunnel never runs with the verify mock.** `npm run tunnel` refuses while any of these holds:
+    - strapi/.env sets `LINE_VERIFY_URL`
+    - the app on 3003 was built for the LIFF mock
+    - anything answers on 127.0.0.1:4545
+    - the running Strapi accepts a forged ID token
+  - **The public origin exposes only the app:** its pages, `/api/concierge`, and three of Strapi's paths (`/mcp`, the token endpoint and `/uploads/*`). Strapi's admin, its other APIs, the OAuth authorize and register pages and `/.well-known` stay on the laptop.
+  - Paul's LINE Login channel stays in **Developing**, so only its admins and testers can sign in through the tunnel.
+  - ngrok runs with `--inspect=false`, because its local inspector would keep customers' tokens.
+  - **Anything that signs in with the mock's tokens runs in local mode:** Task 3's exchange check, Task 7's live test and Task 8. `npm run mode` says which mode the demo is in.
 - **Times:** Asia/Tokyo. The app sends `requestedFor` as `YYYY-MM-DDTHH:MM:00+09:00`, and only for real calendar dates.
 - **AI SDK 7 names:**
   - use `instructions` (not `system`), `isStepCount` (not `stepCountIs`), `onEnd` (not `onFinish`), and `result.stream`
   - the response is `createUIMessageStreamResponse({ stream: toUIMessageStream(...) })`
   - `useChat` takes a `DefaultChatTransport`, and never `api` or `headers` directly
   - MCP tools from `mcp.tools()` arrive as `dynamic-tool` UI parts
-- **No push, no GitHub repo and no pull request without Paul.** Task 9 creates `PaulBratslavsky/maison-demo` only when he says so.
+- **No push, no GitHub repo and no pull request without Paul.** Only when he says so, Task 10 creates `PaulBratslavsky/maison-demo`, pushes `main` and `feat/maison-demo`, and opens the PR. Merging is his call.
 - **LaunchPad and the plugin repos don't change.** The port reads LaunchPad with `git show` and the plugin with `git archive`.
 
 ## Review focus
@@ -129,15 +196,39 @@ These are the inputs the spec implies most likely to bite a real user. Each has 
    - After a 401, the app exchanges a new token once and retries the call. It doesn't fail the screen, and doesn't loop.
    - Calls that get their 401 together share that one exchange and reconnect, and none is cut off by it (`865fa25`).
    - `temporarily_unavailable` waits for `Retry-After` and tries once more.
-   - `invalid_grant` is never retried. Inside LINE it starts a new LINE login.
+   - `invalid_grant` is never retried. Inside LINE it signs in again: log out and reload, at most once a minute (Task 9).
 2. **Two customers on one machine.** A second demo customer (`?demoUser=`) must not see the first customer's visits in the browser. Over MCP, each customer's `my_appointments` must list only their own visits (Task 8).
 3. **Requests to the concierge route without a customer session,** or with an admin token, must get a 401 before anything connects to Strapi or the model (Task 7).
 4. **Booking on a closed day, or on a date that isn't on the calendar.** Osaka on a Tuesday must show "closed" and disable the request button. A cleared date must ask for one. Neither sends a request (built in Task 6, tested in Task 8).
 5. **Running the setup script twice, or with another LINE client active.** It must leave exactly one active "Maison app" client and one of each token, and deactivate the other client. The app must work with the new client ID once the controller restarts it (Task 2).
-6. **A customer's full LINE user ID on a staff surface.** The staff tools and the board mask it, and the Content Manager's views hide it. As defense in depth, the admin API must not return it to any admin client, and the Content Manager's list search must not match it (Task 1's extension, tested in Task 8).
+6. **A customer's full LINE user ID on a staff surface.** The staff tools and the board mask it, and the Content Manager's views hide it. As defense in depth, the admin API must not return it to any admin client, and the Content Manager's list search must not match it (Task 1's extension, tested in Task 8). The appointment's main field, which relation pickers search, must stay `reference` (Task 8).
 7. **No API key.** The concierge must work on the local model, or fail with a message that names the model and the fix (Task 7, and its live test).
 8. **Maison's validation errors, through Strapi's error middleware.** A Content Manager save that Maison rejects must answer 400 with Maison's reason, not 500 (Task 1: the overrides and the share step, and Maison's own integration test).
-9. **A fresh clone.** `git clone`, `npm install`, `npm run dev` and `npm run setup` must be enough, with no hand-edited `.env` and no secret printed (Tasks 1–3, and the clone check in Task 9).
+9. **A fresh clone.** `git clone`, `npm install`, `npm run dev` and `npm run setup` must be enough, with no hand-edited `.env` and no secret printed (Tasks 1–3, and the clone check in Task 10).
+10. **A tunnel with a mock behind it** (Task 9). `npm run tunnel` must refuse while any of these holds:
+    - strapi/.env sets `LINE_VERIFY_URL`
+    - the app on 3003 was built for the LIFF mock
+    - anything answers on the verify mock's port
+    - the running Strapi accepts a forged ID token, or can't check one
+
+    It must send no forged token once the mock's port answers. Its tests run on free ports and start no ngrok.
+11. **The public origin exposes only the proxied paths** (Task 9).
+    - Only `/mcp`, the token endpoint and `/uploads/*` reach Strapi, with only the headers they need: no cookies, no Origin, no ngrok header.
+    - `/admin`, the OAuth authorize and register pages, `/_health` and `/.well-known` answer 404 from the app.
+    - The controller checks the same list through the tunnel.
+12. **MCP answers stream through the proxy** (Task 9).
+    - Each event must reach the phone when Strapi writes it, not when the answer ends.
+    - Next's external rewrites hold it back under compression (checked on 16.3.8), so the proxy is three route handlers.
+    - Its unit test fails a buffering proxy, and `check-strapi-proxy.mjs` times it through `next start`.
+13. **A phone in landscape** (Tasks 3 and 8).
+    - Full screen, inside LINE's safe area: 44 px at the sides and 21 px at the bottom in landscape, 34 px at the bottom in portrait.
+    - Never the stage frame, which needs a wide screen with a fine pointer.
+14. **An expired LINE session inside LINE** (Task 9).
+    - `signInAgain` logs out and reloads, because `liff.login()` can't be used in the LIFF browser.
+    - At most once a minute, so a channel mismatch shows an error instead of reloading for ever.
+15. **Someone else on the venue Wi-Fi** (Tasks 1, 3 and 9).
+    - Strapi, the app and the verify mock must listen on 127.0.0.1 only: `lsof` in Task 3, Step 5 and Task 9, Step 9.
+    - So nobody on the network can register an admin, mint a customer session through the mock, or reach the concierge and the model behind it.
 
 ---
 
@@ -146,10 +237,13 @@ These are the inputs the spec implies most likely to bite a real user. Each has 
 ```
 package.json, package-lock.json         root: postinstall (installs strapi/ and liff/, creates the .env files), dev, setup, test
 .gitignore
-README.md                               the quick start and the runbook (a stub in Task 1; the full one in Task 9)
+README.md                               the quick start and the runbook (a stub in Task 1; the full one in Task 10)
 scripts/init-env.mjs                    strapi/.env and liff/.env from their .env.example files, with fresh secrets
+scripts/line-mode.mjs                   npm run mode, mode:line, mode:local: local or LINE mode, in both .env files (Task 9)
+scripts/line-tunnel.mjs                 npm run tunnel: the guarded ngrok tunnel for LINE mode (Task 9)
+scripts/line-mode.test.mjs, scripts/line-tunnel.test.mjs   node:test
 strapi/                                 create-strapi@5.55.1: TypeScript, npm, SQLite
-  package.json, package-lock.json       + strapi-oauth-mcp-manager from npm, the @strapi overrides, and the postinstall that builds Maison
+  package.json, package-lock.json       + strapi-oauth-mcp-manager from npm, the @strapi overrides, the postinstall that builds Maison, and predevelop's share check
   .env.example                          every key the demo uses
   config/server.ts                      port 1338, url (absolute media URLs for the app's origin), MCP on
   config/plugins.ts                     maison (local) and strapi-oauth-mcp-manager
@@ -172,12 +266,18 @@ liff/                                   the Maison app
   lib/use-tool.ts                       React hook: one tool call per screen
   lib/model.ts                          concierge model: Claude, AI Gateway or Ollama
   lib/concierge.ts                      concierge request handler
+  lib/strapi-proxy.ts                   LINE mode: Strapi's /mcp, token endpoint and /uploads on the app's own origin
+  lib/tunnel.ts                         LINE mode: the header that skips ngrok's warning page
   lib/*.test.ts                         vitest
-  components/*.tsx                      provider, frame, header, screen, drawer, cards, booking sheet
+  components/*.tsx                      provider, frame, header, screen, drawer, cards, booking sheet, spinner (LINE's loading icon)
   app/layout.tsx, app/globals.css
   app/page.tsx, app/collections/[slug]/page.tsx, app/products/[slug]/page.tsx,
   app/visits/page.tsx, app/visits/[reference]/page.tsx, app/concierge/page.tsx
   app/api/concierge/route.ts
+  app/mcp/route.ts, app/api/strapi-oauth-mcp-manager/oauth/token/route.ts, app/uploads/[...path]/route.ts   the proxy's routes
+  public/line/LINE_spinner_light.svg    LINE's loading icon, LINE's own file (Task 5, with Paul's OK)
+  line/channel-icon.png                 the channel icon, to LINE's MINI App icon spec (Task 9)
+  scripts/check-strapi-proxy.mjs, scripts/render-channel-icon.mjs
   live/support.ts, live/concierge.live.test.ts   opt-in, on the local model
   e2e/global-setup.ts, e2e/maison.spec.ts, e2e/api.spec.ts
 ```
@@ -222,10 +322,12 @@ liff/                                   the Maison app
 mkdir /Users/paul/work/maison-demo
 cd /Users/paul/work/maison-demo
 git init -b main
-printf 'node_modules\n.DS_Store\n*.log\n' > .gitignore
+printf 'node_modules\n.DS_Store\n*.log\n.env\n.env.*\n!.env.example\n' > .gitignore
 ```
 
-`README.md`, a stub until Task 9:
+The root `.gitignore` keeps every `.env` out of git, in any folder, but not the `.env.example` files. Paul's API key goes in `liff/.env`, and the repo goes public.
+
+`README.md`, a stub until Task 10:
 
 ````markdown
 # Maison demo: from UX to AX
@@ -266,10 +368,10 @@ Expected: `Your application was created!`, then `strapi/` with `config/`, `src/`
 cd /Users/paul/work/maison-demo
 SRC=/Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp
 SHA=$(git -C "$SRC" rev-parse feat/maison-plugin)
-FILES="admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore"
-git -C "$SRC" diff --stat 75c494f "$SHA" -- $FILES
+FILES=(admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore)
+git -C "$SRC" diff --stat 75c494f "$SHA" -- "${FILES[@]}"
 mkdir -p strapi/src/plugins/maison
-git -C "$SRC" archive "$SHA" -- $FILES | tar -x -C strapi/src/plugins/maison
+git -C "$SRC" archive "$SHA" -- "${FILES[@]}" | tar -x -C strapi/src/plugins/maison
 find strapi/src/plugins/maison -type f | wc -l
 echo "Maison: strapi-store-demo-mcp@$SHA"
 ```
@@ -277,7 +379,7 @@ echo "Maison: strapi-store-demo-mcp@$SHA"
 Expected:
 - **The `diff --stat` prints nothing:** the plugin's files are the ones verified on 30 September (`75c494f`, the same code as PR #2's head, `ed8dacb`). If it lists files, Maison has changed since. Run its tests in its own repo, then carry on, and say so in the commit message.
 - **`133` files.**
-- **The commit,** which goes in this task's commit message and, in Task 9, the README.
+- **The commit,** which goes in this task's commit message and, in Task 10, the README.
 
 What comes over, and why:
 - **`admin/`, `server/`, `package.json` and `package-lock.json`:** what the build needs, with the dependency versions the plugin was tested with. `server/seed/` holds the catalog and its images.
@@ -295,13 +397,16 @@ const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
 p.dependencies = { ...p.dependencies, "strapi-oauth-mcp-manager": "^1.1.0" };
 p.dependencies = Object.fromEntries(Object.entries(p.dependencies).sort(([a], [b]) => a.localeCompare(b)));
 p.scripts.postinstall = "cd src/plugins/maison && npm install && npm run build && node ../../../scripts/share-strapi-utils.mjs";
+p.scripts.predevelop = "node scripts/share-strapi-utils.mjs --check";
 p.overrides = Object.fromEntries(["admin", "data-transfer", "database", "logger", "permissions", "types", "typescript-utils", "utils"].map((name) => ["@strapi/" + name, "5.55.1"]));
 fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
 '
-node -e 'const p = require("./package.json"); console.log(p.scripts.postinstall); console.log(Object.keys(p.dependencies).filter((d) => d.startsWith("strapi-")).join(", ")); console.log(Object.keys(p.overrides).length, "overrides")'
+node -e 'const p = require("./package.json"); console.log(p.scripts.postinstall); console.log(p.scripts.predevelop); console.log(Object.keys(p.dependencies).filter((d) => d.startsWith("strapi-")).join(", ")); console.log(Object.keys(p.overrides).length, "overrides")'
 ```
 
-Expected: the postinstall line, `strapi-oauth-mcp-manager`, and `8 overrides`.
+Expected: the postinstall line, `node scripts/share-strapi-utils.mjs --check`, `strapi-oauth-mcp-manager`, and `8 overrides`.
+
+`predevelop` runs the share step's check before every `npm run develop`. A stray `npm install` inside the Maison folder then stops Strapi at start, rather than turning Maison's 400s into 500s.
 
 The postinstall is Paul's (`cd src/plugins/maison && npm install && npm run build`), plus one step, `share-strapi-utils.mjs`. oauth-mcp-manager comes from npm: it's a reusable package, not part of the demo.
 
@@ -369,7 +474,8 @@ const config = ({ env }: Core.Config.Shared.ConfigParams): Core.Config.Server =>
   // 1338, not Strapi's usual 1337, so the demo runs next to another Strapi app.
   const port = env.int('PORT', 1338);
   return {
-    host: env('HOST', '0.0.0.0'),
+    // This machine only: phones reach the demo through the app's tunnel (README, option B), never Strapi directly.
+    host: env('HOST', '127.0.0.1'),
     port,
     // Absolute public address. The Maison plugin builds absolute media URLs from it, which the
     // Maison app needs because it runs on another origin. oauth-mcp-manager uses it for its metadata.
@@ -567,7 +673,7 @@ Saving, publishing, and Maison's own tools and board still work, because they us
 ```
 # `npm install` at the repo root copies this to .env and generates every secret marked tobemodified,
 # and the demo admin's password. Never commit .env.
-HOST=0.0.0.0
+HOST=127.0.0.1
 PORT=1338
 APP_KEYS=tobemodified
 API_TOKEN_SALT=tobemodified
@@ -591,6 +697,7 @@ MAISON_APP_ORIGIN=
 PUBLIC_URL=
 ```
 
+- **`HOST=127.0.0.1`:** Strapi listens on this machine only. With 0.0.0.0, anyone on the same network could register the first admin of a fresh database, or mint customer sessions while Strapi verifies against the local mock.
 - **`LINE_VERIFY_URL`** names 127.0.0.1, where the mock listens.
 - **`admin@maison.example`** uses a reserved example domain, and Strapi's registration accepts it.
 
@@ -707,8 +814,8 @@ sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' strapi/.env | tr '\n' ' '; echo
 node --env-file=strapi/.env -e 'console.log("placeholders left:", Object.values(process.env).filter((v) => /tobemodified/i.test(v)).length, "| demo admin password set:", Boolean(process.env.DEMO_ADMIN_PASSWORD))'
 (cd strapi && npx tsc --noEmit -p tsconfig.json) && echo "strapi tsc: ok"
 SRC=/Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp
-FILES="admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore"
-TMP=$(mktemp -d) && git -C "$SRC" archive feat/maison-plugin -- $FILES | tar -x -C "$TMP" && diff -rq "$TMP" strapi/src/plugins/maison -x node_modules -x dist && echo "Maison copy: unchanged"; rm -rf "$TMP"
+FILES=(admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore)
+TMP=$(mktemp -d) && git -C "$SRC" archive feat/maison-plugin -- "${FILES[@]}" | tar -x -C "$TMP" && diff -rq "$TMP" strapi/src/plugins/maison -x node_modules -x dist && echo "Maison copy: unchanged"; rm -rf "$TMP"
 npm test
 cd strapi/src/plugins/maison && STRAPI_APP_DIR="$(cd ../../.. && pwd)" npm run test:integration
 ```
@@ -775,8 +882,12 @@ cd /Users/paul/work/maison-demo
 git add .gitignore README.md package.json package-lock.json scripts strapi
 git diff --cached --name-only | grep -E '(^|/)\.env$|(^|/)node_modules/|(^|/)dist/|(^|/)\.tmp/|\.db$'; echo "(nothing above: no secrets, dependencies or build output)"
 git diff --cached --name-only | grep -c '^strapi/src/plugins/maison/'
-git commit -m "feat: add the Strapi app with Maison and oauth-mcp-manager" -m "Maison is copied from PaulBratslavsky/strapi-store-demo-mcp at $(git -C /Users/paul/work/plugin-dev/plugins/strapi-store-demo-mcp rev-parse feat/maison-plugin) (PR #2)."
+MAISON_SHA=<the commit Step 3 printed>   # controller: not the branch; the plugin repo gets docs-only commits meanwhile
+git commit -m "feat: add the Strapi app with Maison and oauth-mcp-manager" -m "Maison is copied from PaulBratslavsky/strapi-store-demo-mcp at $MAISON_SHA (PR #2)."
+git checkout -b feat/maison-demo
 ```
+
+`git checkout -b` answers `Switched to a new branch 'feat/maison-demo'`. Every later commit goes on this branch, and `main` keeps only the root commit. The PR into `main` waits for Paul (Task 10).
 
 Expected: nothing listed by the first `grep`, `133` Maison files, and a commit whose message names the commit Step 3 copied. `strapi/types/generated/` is in it: Strapi writes it on every start, and it only changes when a content type does.
 
@@ -1048,8 +1159,8 @@ git commit -m "feat: add the setup script (demo admin, catalog, tokens, the app'
 
 **Files:**
 - Create:
-  - ported unchanged from LaunchPad `6b68b8f`: `liff/app/globals.css`, `liff/app/page.tsx` (temporary), `liff/components/phone-frame.tsx`, `liff/postcss.config.mjs`, `liff/tsconfig.json`, `liff/vitest.config.ts`
-  - ported with changes: `liff/package.json`, `liff/.env.example`, `liff/.gitignore`, `liff/next.config.mjs`, `liff/tailwind.config.ts`, `liff/app/layout.tsx`, `liff/scripts/mock-line-verify.mjs`
+  - ported unchanged from LaunchPad `6b68b8f`: `liff/app/page.tsx` (temporary), `liff/postcss.config.mjs`, `liff/tsconfig.json`, `liff/vitest.config.ts`
+  - ported with changes: `liff/package.json`, `liff/.env.example`, `liff/.gitignore`, `liff/next.config.mjs`, `liff/tailwind.config.ts`, `liff/app/globals.css`, `liff/app/layout.tsx`, `liff/components/phone-frame.tsx`, `liff/scripts/mock-line-verify.mjs`
   - `liff/package-lock.json`, from npm
 - Modify: `package.json` (root): install `liff/` too, and `dev`, `dev:app`, `concurrently`
 
@@ -1059,12 +1170,24 @@ git commit -m "feat: add the setup script (demo admin, catalog, tokens, the app'
 - **`turbopack.root` stays pinned** to `liff/`, because the root and `strapi/` have lockfiles too. Only its comment changes.
 - **The serif font is self-hosted** from `@fontsource/cormorant-garamond`, so nothing is downloaded at build or run time. `next/font/google` downloaded it at the first compile, which a venue network could break.
 - **The mock verify endpoint** rejects extra dot segments (`valid.U….extra`), treats an empty env value as unset (`||`), and says in its log line where it listens and what it accepts.
+- **The app listens on 127.0.0.1 only** (`-H 127.0.0.1`), like Strapi and the mock. In LINE mode phones come in through the tunnel (Task 9), and nothing on the venue's network can reach the app's sign-in or the concierge directly. The browser still opens `http://localhost:3003`, the origin Strapi's CORS allows.
 - **`.env.example`** points at Strapi on 1338 and `npm run setup`.
+- **LINE's MINI App safe area.** LINE asks MINI Apps to keep the page inside the phone's safe area ([Safe area of LINE MINI App](https://developers.line.biz/en/docs/line-mini-app/design/landscape/)):
+  - 34 px at the bottom in portrait
+  - 44 px on the left and right, and 21 px at the bottom, in landscape
+
+  `globals.css` sets these as two CSS variables, `--line-safe-x` and `--line-safe-bottom`. The frame pads its content with them, and so do the fixed and sticky bars (Tasks 5–7).
+- **The stage frame only on the stage laptop.** The phone frame used to start at 500 px wide, which a phone in landscape is too. It now needs a wide screen with a mouse or trackpad: a Tailwind screen named `stage`, `(min-width: 500px) and (hover: hover) and (pointer: fine)`.
+- **Checked on 30 September,** in Chromium with Playwright's phone emulation:
+  - the stage laptop got the 375×812 frame, with no padding
+  - a phone in portrait, and a desktop window 390 px wide, got 34 px at the bottom
+  - a phone in landscape got the full width, with 44/44/21 px
 
 **Interfaces:**
 - Produces:
   - the app on port 3003, and the mock verify endpoint at `http://127.0.0.1:4545/verify`, which accepts `valid.<U + 32 hex>` for channel `1234567890`
-  - `PhoneFrame`
+  - `PhoneFrame`, with `data-testid="app-area"` on its content
+  - LINE's safe area as `var(--line-safe-x)` and `var(--line-safe-bottom)`, and the Tailwind variant `stage:`
   - root scripts `dev` (Strapi, the app and the mock) and `dev:app`
   - the `demo-app` launch configuration (the controller's)
 
@@ -1073,14 +1196,14 @@ git commit -m "feat: add the setup script (demo admin, catalog, tokens, the app'
 ```bash
 cd /Users/paul/work/maison-demo
 LP=/Users/paul/work/launchpad-fork-latest
-for f in app/globals.css app/page.tsx components/phone-frame.tsx postcss.config.mjs tsconfig.json vitest.config.ts; do
+for f in app/page.tsx postcss.config.mjs tsconfig.json vitest.config.ts; do
   mkdir -p "liff/$(dirname "$f")"
   git -C "$LP" show "6b68b8f:liff/$f" > "liff/$f"
 done
-ls liff liff/app liff/components
+ls -A liff liff/app
 ```
 
-Expected: `liff/` has `.env` (from Task 2), `app/`, `components/`, `postcss.config.mjs`, `tsconfig.json` and `vitest.config.ts`.
+Expected: `liff/` has `.env` (from Task 2), `app/`, `postcss.config.mjs`, `tsconfig.json` and `vitest.config.ts`, and `app/` has `page.tsx`. Step 2 writes `globals.css` and `components/phone-frame.tsx`.
 
 - [ ] **Step 2: Write the changed files**
 
@@ -1093,9 +1216,9 @@ Expected: `liff/` has `.env` (from Task 2), `app/`, `components/`, `postcss.conf
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n app,line-mock -c green,cyan \"next dev -p 3003\" \"node --env-file-if-exists=.env scripts/mock-line-verify.mjs\"",
+    "dev": "concurrently -k -n app,line-mock -c green,cyan \"next dev -H 127.0.0.1 -p 3003\" \"node --env-file-if-exists=.env scripts/mock-line-verify.mjs\"",
     "build": "next build",
-    "start": "concurrently -k -n app,line-mock -c green,cyan \"next start -p 3003\" \"node --env-file-if-exists=.env scripts/mock-line-verify.mjs\"",
+    "start": "concurrently -k -n app,line-mock -c green,cyan \"next start -H 127.0.0.1 -p 3003\" \"node --env-file-if-exists=.env scripts/mock-line-verify.mjs\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:live": "node --env-file=../strapi/.env --env-file=.env node_modules/vitest/vitest.mjs run --config vitest.live.config.ts",
@@ -1206,10 +1329,79 @@ export default {
         serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
         sans: ['"Hiragino Sans"', '"Noto Sans JP"', 'system-ui', 'sans-serif'],
       },
+      screens: {
+        // The stage laptop: a wide screen with a mouse or trackpad, where the app sits in a phone-sized frame
+        // (components/phone-frame.tsx). A phone in landscape is wide too, but has no fine pointer, so it stays full screen.
+        stage: { raw: '(min-width: 500px) and (hover: hover) and (pointer: fine)' },
+      },
     },
   },
   plugins: [],
 } satisfies Config;
+```
+
+`liff/app/globals.css`:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-neutral-900 font-sans text-ink antialiased;
+}
+
+/*
+ * LINE MINI App safe area (https://developers.line.biz/en/docs/line-mini-app/design/landscape/): 34px at the bottom in
+ * normal mode, and 44px on the left and right and 21px at the bottom in landscape mode. The app's frame and its fixed
+ * and sticky bars pad themselves with these. On the stage laptop the app sits in a phone-sized frame, with no notch.
+ */
+:root {
+  --line-safe-x: 0px;
+  --line-safe-bottom: 34px;
+}
+
+@media (orientation: landscape) {
+  :root {
+    --line-safe-x: 44px;
+    --line-safe-bottom: 21px;
+  }
+}
+
+@media screen(stage) {
+  :root {
+    --line-safe-x: 0px;
+    --line-safe-bottom: 0px;
+  }
+}
+```
+
+`screen(stage)` is Tailwind's name for the `stage` media query, and that rule comes last, so on the stage laptop the frame needs no safe area.
+
+`liff/components/phone-frame.tsx`:
+
+```tsx
+import type { ReactNode } from 'react';
+
+/**
+ * On a phone the app fills the screen, inside LINE's safe area (app/globals.css). On the stage laptop (`stage:`, a
+ * wide screen with a mouse or trackpad) it sits in a phone-sized frame. A phone turned to landscape stays full screen.
+ */
+export function PhoneFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-dvh stage:flex stage:items-center stage:justify-center stage:py-8">
+      <div className="relative min-h-dvh bg-ivory stage:h-[812px] stage:min-h-0 stage:w-[375px] stage:overflow-hidden stage:rounded-[2.5rem] stage:shadow-2xl stage:ring-8 stage:ring-black">
+        <div data-testid="app-area" className="h-full px-[var(--line-safe-x)] pb-[var(--line-safe-bottom)] stage:overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 ```
 
 `liff/app/layout.tsx`:
@@ -1312,16 +1504,23 @@ Replace the root `package.json` with:
 }
 ```
 
+The install doesn't re-run `strapi/`'s, which would reinstall and rebuild Maison under the running `demo-strapi` (Global constraints). Install `liff/`, then the root's `concurrently` without its postinstall, and create any missing `.env`:
+
 ```bash
 cd /Users/paul/work/maison-demo
-npm install
+npm install --prefix liff
+npm install --ignore-scripts
+node scripts/init-env.mjs
+node strapi/scripts/share-strapi-utils.mjs --check
 cd liff && npm run build
 grep -rl 'fonts.googleapis\|fonts.gstatic' .next | head -1; echo "(nothing above: the font is self-hosted)"
 ```
 
 Expected:
-- **The install:** `liff/node_modules` and `liff/package-lock.json` are created, with no peer-dependency error. Strapi's install is already up to date.
-- **`liff/.env` is left alone.** Task 2's run created it with its two keys, and the other keys fall back to the defaults in `liff/.env.example`. On a fresh clone, `npm install` creates it from `.env.example`.
+- **The installs:** `liff/node_modules` and `liff/package-lock.json` are created, with no peer-dependency error. The root's `package-lock.json` gains `concurrently`. `strapi/` isn't touched.
+- **`init-env.mjs`** prints nothing: both `.env` files exist, and nothing in them is a placeholder.
+- **`liff/.env` is left alone.** Task 2's run created it with its two keys. The other keys fall back to the code's defaults, which are the values in `liff/.env.example`. On a fresh clone, `npm install` creates it from `.env.example`. Task 10's clone check runs that whole install.
+- "Maison and oauth-mcp-manager share Strapi core's @strapi/utils."
 - **`next build`** lists the `/` route, prints no warning about the workspace root, and leaves `tsconfig.json` as written.
 - **Nothing is listed by `grep`:** the font comes from the build's own `/_next/static/media/`.
 
@@ -1378,7 +1577,9 @@ The controller adds this configuration to `.claude/launch.json` and starts it:
 
 - `npm run dev` also starts the LINE verify mock. Its log line is `Mock LINE verify endpoint on http://127.0.0.1:4545/verify: accepts valid.<LINE user ID> for channel 1234567890`.
 - Next.js reads `NEXT_PUBLIC_*` when it starts, so the controller restarts `demo-app` whenever `npm run setup` writes a new client ID, or `liff/.env` changes.
-- `http://localhost:3003` shows "MAISON", in Cormorant Garamond, in a phone frame.
+- `http://localhost:3003` shows "MAISON", in Cormorant Garamond, in a phone frame: the preview browser is a wide screen with a mouse.
+- `lsof -nP -iTCP:3003 -sTCP:LISTEN` and `lsof -nP -iTCP:4545 -sTCP:LISTEN` each show one `node` listener, on `127.0.0.1:3003` and `127.0.0.1:4545`: nothing on `*` or `0.0.0.0`.
+- The implementer doesn't wait for this step: Step 6's commit doesn't need the running app.
 
 - [ ] **Step 6: Commit**
 
@@ -1386,8 +1587,12 @@ The controller adds this configuration to `.claude/launch.json` and starts it:
 cd /Users/paul/work/maison-demo
 git add package.json package-lock.json liff
 git diff --cached --name-only | grep -E '(^|/)\.env$|(^|/)node_modules/|(^|/)\.next/'; echo "(nothing above: no secrets, dependencies or build output)"
-git commit -m "feat(liff): add the Maison app skeleton and the local LINE verify mock"
+git check-ignore -q liff/.env && echo "liff/.env: ignored"
+git check-ignore -q liff/.env.example || echo "liff/.env.example: tracked"
+git commit -m "feat(liff): add the Maison app skeleton and the local LINE verify mock" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
+
+Expected: nothing listed by the first `grep`, `liff/.env: ignored` and `liff/.env.example: tracked`, then the commit. Both `liff/.gitignore` and the root's ignore `.env`.
 
 ---
 
@@ -1589,7 +1794,7 @@ If `npm run typecheck` reports that `ExtendedInit` or `LiffMockApi` isn't export
 ```bash
 cd /Users/paul/work/maison-demo
 git add liff/lib package.json
-git commit -m "feat(liff): add LINE sign-in, the customer session and the MCP client" -m "Ported from LaunchPad 7ff5816 and 865fa25: calls that get a 401 together share one reconnect."
+git commit -m "feat(liff): add LINE sign-in, the customer session and the MCP client" -m "Ported from LaunchPad 7ff5816 and 865fa25: calls that get a 401 together share one reconnect." -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
 ---
@@ -1599,7 +1804,8 @@ git commit -m "feat(liff): add LINE sign-in, the customer session and the MCP cl
 **Files:**
 - Create:
   - `liff/lib/copy.ts`, `liff/lib/format.ts`, `liff/lib/status.ts`, `liff/lib/use-tool.ts`
-  - `liff/components/maison-provider.tsx`, `header.tsx`, `screen.tsx`, `agent-drawer.tsx`, `product-grid.tsx`, `status-note.tsx`
+  - `liff/components/maison-provider.tsx`, `header.tsx`, `screen.tsx`, `agent-drawer.tsx`, `product-grid.tsx`, `status-note.tsx`, `spinner.tsx`
+  - `liff/public/line/LINE_spinner_light.svg`: LINE's own loading icon, downloaded with Paul's OK (Step 4)
   - `liff/app/collections/[slug]/page.tsx`, `liff/app/visits/page.tsx`, `liff/app/visits/[reference]/page.tsx`
 - Modify: `liff/app/layout.tsx`, `liff/app/page.tsx`
 - Test: `liff/lib/format.test.ts`
@@ -1609,7 +1815,7 @@ git commit -m "feat(liff): add LINE sign-in, the customer session and the MCP cl
 - Produces:
   - `useMaison()`, returning `{ status, error, errorCode, maison, locale, calls, agentView, setAgentView, retrySignIn }`
   - `useTool<T>(screen, name, args)`, returning `{ loading, data, error, retry }`
-  - `<Screen name tools>`, `<ProductGrid>`, `<StatusNote>`
+  - `<Screen name tools>`, `<ProductGrid>`, `<StatusNote>`, and `<Spinner label className?>`: LINE's loading icon
   - `COPY[locale]`
   - `yen`, `visitTime`, `mediaUrl`, `nextSaturday`, `tomorrow`, `timeSlots`, `isRealDate`
   - `statusLabel` and `errorText` (the customer's words for a tool's error code)
@@ -1833,7 +2039,32 @@ export const COPY = {
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 4: Write the provider, the tool hook and the shared components**
+- [ ] **Step 4: LINE's loading icon (Paul's OK first)**
+
+LINE asks LINE MINI Apps to "Download the spinner (svg file) and use it as a loading icon": 30×30 px, centered ([Loading icon](https://developers.line.biz/en/docs/line-mini-app/design/loading-icon/)). The app has no dark theme, so it uses the light-mode file:
+
+| File | URL | HEAD on 30 September |
+|---|---|---|
+| `LINE_spinner_light.svg` | `https://developers.line.biz/media/line-mini-app/LINE_spinner_light.svg` | 712 bytes, `image/svg+xml` |
+| `LINE_spinner_dark.svg` (not used) | `https://developers.line.biz/media/line-mini-app/LINE_spinner_dark.svg` | 712 bytes, `image/svg+xml` |
+
+**Controller:** before dispatching this task, ask Paul: "May the implementer download LINE's loading icon, LINE_spinner_light.svg (712 bytes, from developers.line.biz), into liff/public/line/, and commit it to the repo, which will be public?" Put his answer in the brief.
+
+With his OK:
+
+```bash
+cd /Users/paul/work/maison-demo
+mkdir -p liff/public/line
+curl -sSf -o liff/public/line/LINE_spinner_light.svg https://developers.line.biz/media/line-mini-app/LINE_spinner_light.svg
+stat -f '%z' liff/public/line/LINE_spinner_light.svg
+grep -c '<svg' liff/public/line/LINE_spinner_light.svg
+```
+
+Expected: `712`, then `1`. Another size means LINE has changed the file since 30 September: use it, and say so in the report.
+
+If Paul says no, skip the download, and leave the `<img>` out of `Spinner` in Step 5, so it shows its label alone. Task 10's README then lists the loading icon among what QBurst adds.
+
+- [ ] **Step 5: Write the provider, the tool hook and the shared components**
 
 `liff/components/maison-provider.tsx`:
 
@@ -1965,6 +2196,24 @@ export function useTool<T>(screen: string, name: string, args: Record<string, un
 }
 ```
 
+`liff/components/spinner.tsx`:
+
+```tsx
+/**
+ * LINE's loading icon, as LINE asks LINE MINI Apps to show one: its own 30×30 spinner, centered
+ * (https://developers.line.biz/en/docs/line-mini-app/design/loading-icon/). The label says what's loading, under the
+ * spinner and to screen readers.
+ */
+export function Spinner({ label, className = 'py-10' }: { label: string; className?: string }) {
+  return (
+    <div role="status" className={`flex flex-col items-center justify-center gap-2 px-5 ${className}`}>
+      <img src="/line/LINE_spinner_light.svg" width={30} height={30} alt="" />
+      <p className="text-xs text-mist">{label}</p>
+    </div>
+  );
+}
+```
+
 `liff/components/status-note.tsx`:
 
 ```tsx
@@ -1976,6 +2225,7 @@ import { COPY } from '@/lib/copy';
 import type { ToolError } from '@/lib/mcp';
 import { errorText } from '@/lib/status';
 import { useMaison } from './maison-provider';
+import { Spinner } from './spinner';
 
 /**
  * Loading and error states for one tool call. People see plain copy for the error's code; the tool's own message
@@ -2000,7 +2250,7 @@ export function StatusNote({ loading, error, retry }: { loading: boolean; error:
       </div>
     );
   }
-  return loading ? <p className="px-5 py-8 text-sm text-mist">{t.loading}</p> : null;
+  return loading ? <Spinner label={t.loading} /> : null;
 }
 ```
 
@@ -2070,7 +2320,7 @@ export function AgentDrawer({ screen }: { screen: string }) {
   return (
     <aside
       aria-label={COPY[locale].agentView}
-      className="fixed inset-x-0 bottom-0 z-20 max-h-[45%] overflow-y-auto rounded-t-2xl bg-ink p-4 font-mono text-[11px] text-ivory shadow-2xl min-[500px]:absolute"
+      className="fixed inset-x-0 bottom-0 z-20 max-h-[45%] overflow-y-auto rounded-t-2xl bg-ink px-[calc(1rem+var(--line-safe-x))] pb-[calc(1rem+var(--line-safe-bottom))] pt-4 font-mono text-[11px] text-ivory shadow-2xl stage:absolute"
     >
       <p className="mb-2 text-gold">MCP · Strapi /mcp</p>
       {mine.length === 0 && <p className="text-ivory/60">{COPY[locale].agentViewEmpty}</p>}
@@ -2102,6 +2352,7 @@ import { errorText } from '@/lib/status';
 import { AgentDrawer } from './agent-drawer';
 import { Header } from './header';
 import { useMaison } from './maison-provider';
+import { Spinner } from './spinner';
 
 /** Every screen: header, the MCP tools it uses, sign-in state, and the agent view. */
 export function Screen({ name, tools, children }: { name: string; tools: string[]; children: ReactNode }) {
@@ -2117,7 +2368,7 @@ export function Screen({ name, tools, children }: { name: string; tools: string[
           </li>
         ))}
       </ul>
-      {status === 'starting' && <p className="px-5 py-10 text-sm text-mist">{t.signingIn}</p>}
+      {status === 'starting' && <Spinner label={t.signingIn} className="min-h-[50vh]" />}
       {status === 'error' && (
         <div role="alert" className="px-5 py-10 text-sm text-red-800">
           <p>
@@ -2173,7 +2424,7 @@ export function ProductGrid({ products, locale }: { products: ProductCard[]; loc
 }
 ```
 
-- [ ] **Step 5: Wrap the app in the provider**
+- [ ] **Step 6: Wrap the app in the provider**
 
 In `liff/app/layout.tsx`, add `import { MaisonProvider } from '@/components/maison-provider';`, and change the body to:
 
@@ -2185,7 +2436,7 @@ In `liff/app/layout.tsx`, add `import { MaisonProvider } from '@/components/mais
       </body>
 ```
 
-- [ ] **Step 6: Write the home, collection and visits screens**
+- [ ] **Step 7: Write the home, collection and visits screens**
 
 `liff/app/page.tsx`:
 
@@ -2394,7 +2645,7 @@ export const errorText = (error: Pick<ToolError, 'code' | 'message'>, locale: Lo
   (COPY[locale].errors as Record<string, string>)[error.code] ?? error.message;
 ```
 
-- [ ] **Step 7: Build and look at it**
+- [ ] **Step 8: Build and look at it**
 
 ```bash
 cd /Users/paul/work/maison-demo/liff
@@ -2404,18 +2655,18 @@ npm test && npm run typecheck && npm run build
 **Controller:** `demo-app` hot-reloads the new screens. Open `http://localhost:3003` in the preview browser.
 
 Expected:
-1. The app sits in a phone frame, and shows "LINEでサインインしています…", then the three collections: ヴォヤージュ, アトリエ and ギフト.
+1. The app sits in a phone frame. It shows LINE's loading icon, centered, over "LINEでサインインしています…", then the three collections: ヴォヤージュ, アトリエ and ギフト.
 2. Clicking Voyage lists 4 products, most expensive first.
 3. "エージェントビュー" opens a dark drawer. On the home screen it lists `browse_collections` with `{"locale":"ja"}` and `collections: 3`.
 4. "ご来店予約" shows "ご来店予約はまだありません。"
 5. `/collections/no-such-collection` shows "お探しのものは見つかりませんでした。" and a "トップへ戻る" link. The agent view there shows `isError: not_found`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 cd /Users/paul/work/maison-demo
-git add liff/lib liff/components liff/app
-git commit -m "feat(liff): add the catalog and visits screens with the agent view"
+git add liff/lib liff/components liff/app liff/public
+git commit -m "feat(liff): add the catalog and visits screens with the agent view" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
 ---
@@ -2426,10 +2677,10 @@ git commit -m "feat(liff): add the catalog and visits screens with the agent vie
 - Create: `liff/components/booking-sheet.tsx`, `liff/app/products/[slug]/page.tsx`
 
 **Interfaces:**
-- Consumes: `useTool`, `useMaison`, `Screen`, `StatusNote`, `ProductImage`, `COPY`, `yen`, `nextSaturday`, `tomorrow`, `timeSlots`, `isRealDate`, `errorText`, `toolErrorOf` (Tasks 4 and 5). Tools: `view_product`, `find_boutiques({ productSlugs, date })`, `request_appointment`.
+- Consumes: `useTool`, `useMaison`, `Screen`, `StatusNote`, `Spinner`, `ProductImage`, `COPY`, `yen`, `nextSaturday`, `tomorrow`, `timeSlots`, `isRealDate`, `errorText`, `toolErrorOf` (Tasks 4 and 5), and LINE's safe area and `stage:` (Task 3). Tools: `view_product`, `find_boutiques({ productSlugs, date })`, `request_appointment`.
 - Produces: `/products/[slug]`, and `<BookingSheet product onClose>`, which on success navigates to `/visits?ref=<reference>`.
 
-The sheet checks opening hours with `find_boutiques` for the chosen date before it lets the customer send. A closed day shows a message and disables the button, so `boutique_closed` from the tool is only a backstop. A cleared or impossible date is never sent, because the tools only take real calendar dates. Errors show in the customer's words (`errorText`), not as the tool's agent-facing hint.
+The sheet checks opening hours with `find_boutiques` for the chosen date before it lets the customer send, with LINE's loading icon while it checks. A closed day shows a message and disables the button, so `boutique_closed` from the tool is only a backstop. A cleared or impossible date is never sent, because the tools only take real calendar dates. Errors show in the customer's words (`errorText`), not as the tool's agent-facing hint.
 
 - [ ] **Step 1: Write `liff/components/booking-sheet.tsx`**
 
@@ -2446,6 +2697,7 @@ import { errorText } from '@/lib/status';
 import type { Appointment, BoutiqueInfo, Product } from '@/lib/types';
 import { useTool } from '@/lib/use-tool';
 import { useMaison } from './maison-provider';
+import { Spinner } from './spinner';
 
 const field = 'mt-1 block min-h-[44px] w-full rounded border border-ink/20 bg-white px-3 text-sm';
 
@@ -2501,8 +2753,8 @@ export function BookingSheet({ product, onClose }: { product: Product; onClose: 
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={t.bookVisit} className="fixed inset-0 z-30 flex items-end bg-black/40 min-[500px]:absolute">
-      <form onSubmit={submit} className="max-h-[90%] w-full space-y-3 overflow-y-auto rounded-t-2xl bg-ivory p-5">
+    <div role="dialog" aria-modal="true" aria-label={t.bookVisit} className="fixed inset-0 z-30 flex items-end bg-black/40 stage:absolute">
+      <form onSubmit={submit} className="max-h-[90%] w-full space-y-3 overflow-y-auto rounded-t-2xl bg-ivory px-[calc(1.25rem+var(--line-safe-x))] pb-[calc(1.25rem+var(--line-safe-bottom))] pt-5">
         <div className="flex items-center justify-between">
           <h2 className="font-serif text-2xl">{t.bookVisit}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="min-h-[44px] min-w-[44px] text-lg">
@@ -2532,7 +2784,7 @@ export function BookingSheet({ product, onClose }: { product: Product; onClose: 
             {t.chooseDate}
           </p>
         )}
-        {validDate && availability.loading && <p className="text-xs text-mist">{t.loading}</p>}
+        {validDate && availability.loading && <Spinner label={t.loading} className="py-2" />}
         {validDate && !availability.loading && chosen && !open && (
           <p role="status" className="rounded bg-red-50 p-3 text-sm text-red-900">
             {t.closedOnDate}
@@ -2663,7 +2915,7 @@ Expected:
 ```bash
 cd /Users/paul/work/maison-demo
 git add liff/components/booking-sheet.tsx "liff/app/products"
-git commit -m "feat(liff): add the product page and the booking sheet"
+git commit -m "feat(liff): add the product page and the booking sheet" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
 ---
@@ -2675,7 +2927,7 @@ git commit -m "feat(liff): add the product page and the booking sheet"
 - Test: `liff/lib/model.test.ts`, `liff/lib/concierge.test.ts`, and the live test: `liff/vitest.live.config.ts`, `liff/live/support.ts`, `liff/live/concierge.live.test.ts`
 
 **Interfaces:**
-- Consumes: `getMaison().session.getToken()` (Task 4); Strapi `/mcp` with the customer's token and `x-maison-surface: concierge` (Maison plugin)
+- Consumes: `getMaison().session.getToken()` (Task 4); `Spinner` (Task 5) and LINE's safe area (Task 3); Strapi `/mcp` with the customer's token and `x-maison-surface: concierge` (Maison plugin)
 - Produces:
   - `conciergeModel(env?): { model: LanguageModel; label: string }`: Claude, AI Gateway or Ollama
   - `handleConcierge(request, { model, modelLabel?, createMcpClient, strapiUrl, now? }): Promise<Response>`, plus `SURFACE_HEADER` and `describeModelError`
@@ -3138,6 +3390,7 @@ import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { ToolResult, type ToolPart } from '@/components/chat-parts';
 import { useMaison } from '@/components/maison-provider';
 import { Screen } from '@/components/screen';
+import { Spinner } from '@/components/spinner';
 import { COPY } from '@/lib/copy';
 import { getMaison } from '@/lib/maison';
 
@@ -3198,14 +3451,14 @@ export default function ConciergePage() {
             })}
           </div>
         ))}
-        {busy && <p className="text-xs text-mist">…</p>}
+        {busy && <Spinner label={t.loading} className="py-2" />}
         {error && (
           <p role="alert" className="text-sm text-red-800">
             {error.message}
           </p>
         )}
       </div>
-      <div className="sticky bottom-0 space-y-2 border-t border-ink/10 bg-ivory px-5 py-3">
+      <div className="sticky bottom-0 space-y-2 border-t border-ink/10 bg-ivory px-5 pb-[calc(0.75rem+var(--line-safe-bottom))] pt-3">
         <div className="flex gap-2 overflow-x-auto">
           {t.suggestions.map((suggestion) => (
             <button
@@ -3238,7 +3491,12 @@ export default function ConciergePage() {
 }
 ```
 
-On the concierge screen the tool calls happen on the server. They show as chips in the conversation, so the agent drawer there stays empty by design.
+On the concierge screen the tool calls happen on the server. They show as chips in the conversation, so the agent drawer there stays empty by design. While the model works, LINE's loading icon shows under the conversation, and the input bar keeps clear of LINE's safe area at the bottom.
+
+**Stop point.**
+- The implementer writes Step 6's three files, runs `npm test`, commits with Step 7's command, and stops there.
+- The controller then runs Step 5's check and Step 6's live run.
+- If the concierge breaks a rule, or the live test fails, the controller resumes the implementer with the transcript or the test's output. The implementer fixes the instructions in `lib/concierge.ts`, reruns `npm test`, and commits the fix on its own (`fix(liff): …`). The controller then runs the check again.
 
 - [ ] **Step 5: Try it with a model**
 
@@ -3250,7 +3508,7 @@ Expected:
 3. Tap "はい、お願いします。". A `request_appointment ✓` chip and an appointment card say "ブティックの確認待ち". The reply says the boutique will confirm on LINE, and never says confirmed.
 4. **Paul:** on the Maison board in the Strapi admin (`http://localhost:1338/admin` → Maison), the new request shows `concierge` under "Created via".
 
-On the local model a turn takes about 20–60 seconds, and the wording varies more; the rules still hold. If the concierge breaks a rule, fix the instructions in `lib/concierge.ts` and rerun `npm test`.
+On the local model a turn takes about 20–60 seconds, and the wording varies more; the rules still hold. If the concierge breaks a rule, the controller hands it back (the stop point above).
 
 - [ ] **Step 6: Add the concierge's live test on the local model**
 
@@ -3424,7 +3682,7 @@ Expected: `1 passed`, in about 20–30 seconds. It's skipped when Ollama or Stra
 ```bash
 cd /Users/paul/work/maison-demo
 git add liff/lib/model.ts liff/lib/model.test.ts liff/lib/concierge.ts liff/lib/concierge.test.ts liff/app/api liff/app/concierge liff/components/chat-parts.tsx liff/vitest.live.config.ts liff/live/support.ts liff/live/concierge.live.test.ts
-git commit -m "feat(liff): add the concierge over the customer's MCP session, on Claude or a local model"
+git commit -m "feat(liff): add the concierge over the customer's MCP session, on Claude or a local model" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
 ---
@@ -3439,14 +3697,19 @@ git commit -m "feat(liff): add the concierge over the customer's MCP session, on
 - Consumes:
   - the running Strapi (`demo-strapi`, 1338), and the app on 3003: Playwright reuses `demo-app` when it's running, and otherwise starts `npm run dev` for the run and stops it after
   - admin `POST /admin/login` and `POST /maison/demo/reset`
-  - the Content Manager API
+  - the Content Manager API, and its list search (`_q`)
   - the Maison plugin's MCP smoke tests, in the demo's copy (`strapi/src/plugins/maison`)
+  - `data-testid="app-area"` and LINE's safe area (Task 3)
 - Produces: `npm run test:e2e` (browser and API tests), and root scripts for it and for Task 7's `npm run test:live`
 
 What's covered here:
-- **Browser tests, in mock mode:** the sign-in chain, the screens, booking, the closed-day guard, the agent view, an unknown product, and isolation between customers.
-- **API tests:** each customer's `my_appointments` over MCP, and the admin API keeping `customer` out.
-- **The Maison smoke tests,** again, with oauth-mcp-manager 1.1 installed.
+- **Browser tests, in mock mode:**
+  - the sign-in chain, the screens, and booking
+  - the closed-day guard, and a cleared date, neither of which sends a request
+  - the agent view, an unknown product, and isolation between customers
+  - LINE's safe area on a phone, in portrait and in landscape, where the app fills the screen without the stage frame
+- **API tests:** each customer's `my_appointments` over MCP; the admin API keeping `customer` out; and its list search, which never matches a customer's LINE user ID.
+- **The Maison smoke tests,** again, with oauth-mcp-manager 1.1 installed. Their tokens are deleted afterwards.
 
 The concierge's contract is Task 7's unit test, and its live run is Task 7's `npm run test:live`, because a model's answer isn't deterministic.
 
@@ -3527,6 +3790,15 @@ const openWeekender = async (page: Page) => {
   await expect(page.getByRole('heading', { level: 1 })).toContainText(/Weekender|ウィークエンダー/);
 };
 
+/** Every request_appointment the page sends to Strapi's /mcp, from now on. */
+const appointmentRequests = (page: Page) => {
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/mcp' && request.postData()?.includes('"request_appointment"')) sent.push(request.url());
+  });
+  return sent;
+};
+
 test('a customer browses, books a visit and finds it in My visits', async ({ page }) => {
   await openWeekender(page);
   await page.getByRole('button', { name: /Book a visit|来店を予約/ }).click();
@@ -3539,12 +3811,24 @@ test('a customer browses, books a visit and finds it in My visits', async ({ pag
 });
 
 test('Osaka is closed on Tuesdays, and the sheet says so before any request', async ({ page }) => {
+  const sent = appointmentRequests(page);
   await openWeekender(page);
   await page.getByRole('button', { name: /Book a visit|来店を予約/ }).click();
   await page.getByLabel(/Boutique|ブティック/).selectOption('osaka');
   await page.getByLabel(/Date|日付/).fill(next(2));
   await expect(page.getByText(/Closed on this day|この日は休業日です/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Send request|リクエストを送る/ })).toBeDisabled();
+  expect(sent).toEqual([]);
+});
+
+test('a cleared date asks for one, and sends no request', async ({ page }) => {
+  const sent = appointmentRequests(page);
+  await openWeekender(page);
+  await page.getByRole('button', { name: /Book a visit|来店を予約/ }).click();
+  await page.getByLabel(/Date|日付/).fill('');
+  await expect(page.getByText(/Please choose a date|日付をお選びください/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Send request|リクエストを送る/ })).toBeDisabled();
+  expect(sent).toEqual([]);
 });
 
 test('the agent view shows the MCP tools behind each screen', async ({ page }) => {
@@ -3566,9 +3850,34 @@ test("a second customer doesn't see the first customer's visits", async ({ page 
   await expect(page.getByText(/No visits yet|ご来店予約はまだありません/)).toBeVisible();
   await expect(page.getByTestId('visit')).toHaveCount(0);
 });
+
+// LINE's MINI App safe area (Task 3). Phone emulation makes the pointer coarse, so there's no stage frame.
+test.describe('a phone in portrait', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("keeps LINE's safe area: 34 px at the bottom", async ({ page }) => {
+    await page.goto('/');
+    const area = page.getByTestId('app-area');
+    await expect(area).toHaveCSS('padding-bottom', '34px');
+    await expect(area).toHaveCSS('padding-left', '0px');
+  });
+});
+
+test.describe('a phone in landscape', () => {
+  test.use({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+
+  test("fills the screen inside LINE's safe area: 44 px at the sides, 21 px at the bottom", async ({ page }) => {
+    await page.goto('/');
+    const area = page.getByTestId('app-area');
+    await expect(area).toHaveCSS('padding-left', '44px');
+    await expect(area).toHaveCSS('padding-right', '44px');
+    await expect(area).toHaveCSS('padding-bottom', '21px');
+    expect((await area.boundingBox())?.width).toBe(844);
+  });
+});
 ```
 
-The tests run in file order with one worker. The first test leaves the default customer with a visit, so the last test checks that the second customer can't see it.
+The tests run in file order with one worker. The first test leaves the default customer with a visit, so the second-customer test after it checks that that customer can't see it. The closed-day and cleared-date tests watch the page's requests to Strapi's `/mcp`: no `request_appointment` leaves the browser. The safe-area values were checked under this emulation on 30 September (Task 3).
 
 - [ ] **Step 3: Write `liff/e2e/api.spec.ts`**
 
@@ -3616,21 +3925,31 @@ test('my_appointments shows each customer only their own visits', async () => {
   await bob.close();
 });
 
-test("the admin API never returns an appointment's customer", async ({ request }) => {
+test("the admin API never returns an appointment's customer, and its list search never matches one", async ({ request }) => {
   const carol = await signIn(`U${'f'.repeat(32)}`);
-  await call(carol, 'request_appointment', { boutique: 'ginza', productSlugs: ['passport-cover'], requestedFor: visitOn(6, '16:00') });
+  const booked = await call(carol, 'request_appointment', { boutique: 'ginza', productSlugs: ['passport-cover'], requestedFor: visitOn(6, '16:00') });
   await carol.close();
   // The Content Manager's API. Every admin API reader goes through the same sanitizer.
-  const response = await request.get(`${strapiUrl}/content-manager/collection-types/plugin::maison.appointment?page=1&pageSize=20`, { headers: asAdmin() });
-  expect(response.ok()).toBe(true);
-  const { results } = (await response.json()) as { results: Array<Record<string, unknown>> };
+  const list = async (query = '') => {
+    const response = await request.get(`${strapiUrl}/content-manager/collection-types/plugin::maison.appointment?page=1&pageSize=20${query}`, { headers: asAdmin() });
+    expect(response.ok()).toBe(true);
+    return ((await response.json()) as { results: Array<Record<string, unknown>> }).results;
+  };
+  const results = await list();
   expect(results.length).toBeGreaterThan(0);
   for (const row of results) expect(row).not.toHaveProperty('customer');
+  // The list search (_q) finds an appointment by its reference, and never by part of its customer's LINE user ID.
+  expect((await list(`&_q=${booked.appointment.reference}`)).map((row) => row.reference)).toContain(booked.appointment.reference);
+  expect(await list('&_q=ffffffff')).toHaveLength(0);
+  // The relation picker searches an appointment's main field, so it must be the reference, never the customer.
+  const configuration = await request.get(`${strapiUrl}/content-manager/content-types/plugin::maison.appointment/configuration`, { headers: asAdmin() });
+  expect(configuration.ok()).toBe(true);
+  expect(((await configuration.json()) as { data: { contentType: { settings: { mainField: string } } } }).data.contentType.settings.mainField).toBe('reference');
 });
 ```
 
 - **The first test** signs two demo customers in the way the app does (LIFF mock ID token, token exchange) and books a visit for each. Each customer's `my_appointments` must list only that customer's own visit.
-- **The second** reads appointments through the Content Manager's API. Every admin API reader goes through the same sanitizer, so no `customer` there means none for any admin client (Task 1's extension).
+- **The second** reads appointments through the Content Manager's API. Every admin API reader goes through the same sanitizer, so no `customer` there means none for any admin client (Task 1's extension). The list search finds Carol's visit by its reference, and nothing for `ffffffff`, a run of her LINE user ID (Task 1's `searchable: false`). The Content Manager's stored configuration names `reference` as the appointment's main field: relation pickers search the main field, so `customer` must never become it. Maison's schema lists `reference` first, which makes it the default.
 
 - [ ] **Step 4: Install the browser and run the tests**
 
@@ -3642,7 +3961,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Expected: `7 passed` (5 browser tests, 2 API tests). It signs in once, in the global setup.
+Expected: `10 passed` (8 browser tests, 2 API tests). It signs in once, in the global setup.
 
 - [ ] **Step 5: Run the Maison MCP smoke tests against the demo**
 
@@ -3664,6 +3983,25 @@ Expected:
 - The token script adds three tokens named `maison-customer-<time>`, `maison-staff-<time>` and `maison-ops-<time>` to the demo database. They don't clash with the setup script's names.
 - The smoke tests need `liffUrl`, which `MAISON_LIFF_URL` in `strapi/.env` provides.
 
+Then delete the three tokens the token script minted, and its token file. They never expire, and one is a staff token that can confirm visits: the demo keeps no standing staff credential.
+
+```bash
+cd /Users/paul/work/maison-demo
+node --env-file=strapi/.env --input-type=module -e "
+const base = 'http://localhost:1338';
+const login = await (await fetch(base + '/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: process.env.DEMO_ADMIN_EMAIL, password: process.env.DEMO_ADMIN_PASSWORD }) })).json();
+const api = (method, path) => fetch(base + path, { method, headers: { Authorization: 'Bearer ' + login.data.token } });
+const smokeTokens = async () => (await (await api('GET', '/admin/admin-tokens')).json()).data.filter((token) => /^maison-(customer|staff|ops)-\d+$/.test(token.name));
+const minted = await smokeTokens();
+for (const token of minted) await api('DELETE', '/admin/admin-tokens/' + token.id);
+console.log('smoke-test tokens deleted:', minted.length, '| left:', (await smokeTokens()).length);
+"
+rm -f strapi/src/plugins/maison/test/mcp/.tokens.json
+ls -A strapi/src/plugins/maison/test/mcp | grep -c '^\.tokens\.json$'
+```
+
+Expected: `smoke-test tokens deleted: 3 | left: 0` (more than 3 if an earlier run left some), then `0`. It's this run's third admin sign-in, after the global setup's and the token script's, inside Strapi's five per five minutes. The README's stage checklist still starts from a clean database.
+
 In the root `package.json` `scripts`, put a comma after the `"test"` line, and add after it:
 
 ```json
@@ -3676,12 +4014,1707 @@ In the root `package.json` `scripts`, put a comma after the `"test"` line, and a
 ```bash
 cd /Users/paul/work/maison-demo
 git add liff/playwright.config.ts liff/e2e package.json
-git commit -m "test(liff): add the browser and API tests"
+git commit -m "test(liff): add the browser and API tests" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 9: README, ops agent, rehearsal, backup video, and publishing the repo
+### Task 9: The app inside LINE: one tunnel, a guarded mode switch, and Paul's phone
+
+The stage keeps the LIFF mock. This task makes the real thing a tested path: the same app inside LINE on Paul's phone, signed in by his own LINE Login channel and LIFF app, on one public https origin from ngrok. A LINE MINI App is a LIFF app on a MINI App channel (LINE's [Introducing LINE MINI App](https://developers.line.biz/en/docs/line-mini-app/discover/introduction/)), so this is also the path QBurst takes with their MINI App channel (Task 10's handoff).
+
+**Files:**
+- Create:
+  - `scripts/line-mode.mjs`, `scripts/line-mode.test.mjs`: the switch between local and LINE mode
+  - `scripts/line-tunnel.mjs`, `scripts/line-tunnel.test.mjs`: the guarded tunnel
+  - `liff/lib/strapi-proxy.ts`, `liff/lib/strapi-proxy.test.ts`, and the routes `liff/app/mcp/route.ts`, `liff/app/api/strapi-oauth-mcp-manager/oauth/token/route.ts` and `liff/app/uploads/[...path]/route.ts`
+  - `liff/lib/tunnel.ts`, `liff/lib/tunnel.test.ts`: the header that skips ngrok's warning page
+  - `liff/lib/liff.test.ts`
+  - `liff/scripts/check-strapi-proxy.mjs`: the proxy, end to end, through `next start`
+  - `liff/scripts/render-channel-icon.mjs` and `liff/line/channel-icon.png`: the channel icon, to LINE's MINI App icon spec
+- Modify:
+  - `liff/lib/liff.ts` (Task 4): sign in again the way LIFF documents it
+  - `liff/lib/session.ts`, `liff/lib/mcp.ts` (Task 4) and `liff/app/concierge/page.tsx` (Task 7): the header, on same-origin calls only
+  - `liff/next.config.mjs`, `liff/package.json` and `liff/.env.example` (Task 3): the `X-Maison-Liff` header, `start:line`, and LINE mode's keys
+  - `strapi/scripts/maison-setup.mjs` (Task 2): the app's Strapi URL in LINE mode, and a check of the running channel
+  - `package.json` (root): `mode`, `mode:line`, `mode:local`, `start:line`, `tunnel`, and the scripts' tests in `npm test`
+- **Never committed, printed or written into the plan or the README:** Paul's LIFF ID, channel ID and ngrok domain. They live in `liff/.env` only, as `LINE_MODE_LIFF_ID`, `LINE_MODE_CHANNEL_ID` and `LINE_MODE_DOMAIN`. The repo goes public.
+
+**How LINE mode works, and why:**
+- **One public origin, and Strapi stays local.** The phone talks only to the app's origin, ngrok's https domain. The app proxies three of Strapi's paths to `http://localhost:1338`: `/mcp`, the token endpoint (`/api/strapi-oauth-mcp-manager/oauth/token`) and `/uploads/*`. Strapi's admin and its other APIs never reach the internet, and the browser needs no CORS.
+- **Route handlers, not rewrites.** Next 16.3.8 gzips every response in its router (`compress` is on by default). An external rewrite pipes Strapi's server-sent events through that gzip without flushing. A route handler's stream is flushed chunk by chunk (`next/dist/server/pipe-readable.js`). Checked on 30 September with `next start`: a two-event MCP answer arrived in one chunk at 1509 ms through a rewrite, and event by event (19 ms, then 1517 ms) through a route handler. Route handlers also forward only the headers the calls use (no cookies, no Origin), and only these three paths.
+- **A production build, not `next dev` with `allowedDevOrigins`.** Next 16 blocks cross-origin requests to dev-only assets unless the tunnel's hostname is listed (`liff/node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/allowedDevOrigins.md`). A dev server would also compile each page on its first request over the tunnel, and keep an HMR socket open to the phone. A production build is what QBurst deploys. The cost: `NEXT_PUBLIC_*` values are inlined at build time, so `npm run start:line` builds again every time.
+- **Strapi's public URL is the app's.** `PUBLIC_URL=https://<your domain>` makes Maison's media URLs and oauth-mcp-manager's metadata use the public origin, which proxies them. The admin keeps working at `http://localhost:1338/admin`: when the admin and the server share an origin, Strapi 5.55.1 builds the admin with a relative backend URL (`@strapi/strapi/dist/src/node/create-build-context.js`).
+- **The switch is two `.env` files.** oauth-mcp-manager's OAuth client holds no LINE channel. The channel is `identityProviders.line.channelId`, from `LINE_LOGIN_CHANNEL_ID`, which Strapi reads at start. So `npm run mode:line` and `npm run mode:local` rewrite eight keys, then Strapi restarts:
+
+  | Key | Local mode | LINE mode |
+  |---|---|---|
+  | `LINE_LOGIN_CHANNEL_ID` (strapi/.env) | `1234567890`, the mock's | `LINE_MODE_CHANNEL_ID` |
+  | `LINE_VERIFY_URL` (strapi/.env) | `http://127.0.0.1:4545/verify` | empty: LINE's own endpoint |
+  | `MAISON_LIFF_URL` (strapi/.env) | `http://localhost:3003` | `https://liff.line.me/<LINE_MODE_LIFF_ID>` |
+  | `PUBLIC_URL` (strapi/.env) | empty: `http://localhost:1338` | `https://<LINE_MODE_DOMAIN>` |
+  | `NEXT_PUBLIC_LIFF_MOCK` (liff/.env) | `true` | `false` |
+  | `NEXT_PUBLIC_LIFF_ID` (liff/.env) | empty | `LINE_MODE_LIFF_ID` |
+  | `NEXT_PUBLIC_STRAPI_URL` (liff/.env) | `http://localhost:1338` | `https://<LINE_MODE_DOMAIN>` |
+  | `STRAPI_URL` (liff/.env) | `http://localhost:1338` | `http://localhost:1338`: the proxy's and the concierge's |
+
+  Running either switch twice changes nothing, and neither prints a value. The setup script (`npm run setup`) now checks that the running Strapi has the channel strapi/.env names, and it writes `PUBLIC_URL` as the app's Strapi URL in LINE mode, so a setup run there doesn't send the phone to `localhost`. The mock's own `LINE_LOGIN_CHANNEL_ID` in liff/.env stays `1234567890`, so the mock never accepts tokens for Paul's channel.
+- **The guard.** With the local verify mock behind a tunnel, anyone could mint a session for any LINE user ID. `npm run tunnel` refuses unless:
+  - strapi/.env has no `LINE_VERIFY_URL`, and both files are in LINE mode
+  - nothing answers on the verify mock's port (127.0.0.1:4545)
+  - the app on 127.0.0.1:3003 was built for LINE (`X-Maison-Liff: line`, a header `next.config.mjs` sets from `NEXT_PUBLIC_LIFF_MOCK`)
+  - the running Strapi, reached through the app, refuses a forged ID token with 400 `invalid_grant`: LINE checked it, not a mock. This last probe runs only once everything else passes.
+  
+  It then runs `ngrok http 127.0.0.1:3003 --url=https://<domain> --inspect=false`. The app listens on 127.0.0.1 only, like Strapi, so the tunnel is the only way in from outside this machine. `--inspect=false` turns off ngrok's local inspector (:4040), which would otherwise keep every request, customers' session tokens and LINE ID tokens included ([ngrok's web inspection interface](https://ngrok.com/docs/agent/web-inspection-interface/)).
+- **ngrok's free-plan warning page.** Paul's domain is an ngrok dev domain (`*.ngrok-free.dev`), which free accounts use. ngrok shows a warning page in front of "all HTML browser traffic on the free tier", picked out by a browser User-Agent, until the visitor clicks **Visit Site**; a cookie then suppresses it for 7 days. A request header, `ngrok-skip-browser-warning`, skips it ([ngrok's free plan limits](https://ngrok.com/docs/pricing-limits/free-plan-limits/), [ERR_NGROK_6024](https://ngrok.com/docs/errors/err_ngrok_6024/)).
+  - The page's own calls carry a browser User-Agent too, so the app sends that header on them: the token exchange, the MCP client and the concierge.
+  - It sends it only when Strapi's URL is the page's own origin, which is LINE mode. Cross-origin, in local mode, Strapi's CORS settings wouldn't allow the header.
+  - The first page load inside LINE can't carry a header, so **Paul** taps Visit Site once (Step 12).
+- **LIFF inside LINE.** `liff.login()` can't be used in the LIFF browser, because `liff.init()` signs in by itself there, and an ID token is valid for one hour ([LIFF API reference](https://developers.line.biz/en/reference/liff/): `liff.login()`, `liff.getIDToken()`). Task 4's `signInAgain` called `liff.login()`. It now logs out and reloads, LINE's own pattern ([Developing a LIFF app](https://developers.line.biz/en/docs/liff/developing-liff-apps/), "Performing a login process"), at most once a minute. A second `invalid_grant` right after a new sign-in means the app and Strapi disagree about the channel, and the screen shows the error instead of reloading for ever.
+- **The LIFF app's settings** follow [Adding a LIFF app to your channel](https://developers.line.biz/en/docs/liff/registering-liff-apps/). The endpoint URL is `https://<your domain>/`, the root, so `liff.init()` runs at or below it on every page ([liff.init()](https://developers.line.biz/en/reference/liff/#initialize-liff-app)). The scopes are `openid` and `profile`, and the size is `Full`, the only size a MINI App has. The channel stays in **Developing**, where only its admins and testers can sign in ([LINE Login: getting started](https://developers.line.biz/en/docs/line-login/getting-started/)). So nobody else can get a customer session through the tunnel, or use the concierge's model.
+
+**Interfaces:**
+- Consumes:
+  - Strapi on `http://localhost:1338` (Tasks 1–2): `/mcp`, `POST /api/strapi-oauth-mcp-manager/oauth/token`, `/uploads/*`, and the admin overview's `lineSignIn.channelId` (the setup script)
+  - Task 4's `config.strapiUrl`, `initLiff`, `createSession` and `createMcp`, and Task 7's concierge transport
+  - Playwright's Chromium (Task 8, Step 4), for the icon
+  - Paul's values in `liff/.env`: `LINE_MODE_LIFF_ID`, `LINE_MODE_CHANNEL_ID` and `LINE_MODE_DOMAIN`
+- Produces:
+  - `proxyToStrapi(request, path, { strapiUrl?, fetchImpl? })`, `strapiOrigin(env?)`, and the routes `/mcp` (GET, POST, DELETE), `/api/strapi-oauth-mcp-manager/oauth/token` (POST) and `/uploads/[...path]` (GET, HEAD)
+  - `tunnelHeaders(strapiUrl)`
+  - `X-Maison-Liff: mock | line` on every answer from the app
+  - root scripts `mode`, `mode:line`, `mode:local`, `start:line` and `tunnel` (`npm run tunnel -- --dry-run` checks only)
+  - `scripts/line-mode.mjs` exports `readEnv`, `writeEnv`, `lineInputs`, `modeDifferences`, `currentMode` and `main`; `scripts/line-tunnel.mjs` exports `checkTunnel` and `main`
+  - `liff/line/channel-icon.png`
+  - the `demo-app-line` launch configuration (the controller's)
+
+**Stop points:**
+- The implementer does Steps 1–7 and stops after Step 7's commit.
+- Steps 8–13 are Paul's and the controller's, in order. Step 5 asks the controller to restart `demo-app`; the implementer doesn't wait for it.
+- If a check in Steps 9–13 fails, the controller resumes the implementer with the check's output. The fix gets its own commit (`fix(liff): …`).
+
+- [ ] **Step 1: Write the failing tests for the app's side**
+
+`liff/lib/strapi-proxy.test.ts`:
+
+```ts
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+import { afterEach, describe, expect, it } from 'vitest';
+import { proxyToStrapi } from './strapi-proxy';
+
+type Seen = { method: string; url: string; headers: IncomingMessage['headers']; body: string };
+
+/** A stand-in for Strapi on a free port. It records every request it gets. */
+const upstreams: Array<{ close: () => void }> = [];
+const fakeStrapi = async (handle: (req: IncomingMessage, res: ServerResponse, body: string) => void) => {
+  const seen: Seen[] = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      seen.push({ method: req.method ?? '', url: req.url ?? '', headers: req.headers, body });
+      handle(req, res, body);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  upstreams.push({ close: () => server.close() });
+  return { strapiUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, seen };
+};
+afterEach(() => upstreams.splice(0).forEach((upstream) => upstream.close()));
+
+const PUBLIC = 'https://maison.example';
+
+describe('proxyToStrapi', () => {
+  it('forwards an MCP call with only the headers it needs, and passes the answer back', async () => {
+    const { strapiUrl, seen } = await fakeStrapi((_req, res) => {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer resource_metadata="x"', 'Set-Cookie': 'koa.sess=1' });
+      res.end('{"error":"invalid_token"}');
+    });
+    const response = await proxyToStrapi(
+      new Request(`${PUBLIC}/mcp`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer mcp_at_customer',
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'mcp-protocol-version': '2025-06-18',
+          Cookie: 'ngrok_visit=1',
+          Origin: PUBLIC,
+          'ngrok-skip-browser-warning': '1',
+        },
+        body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+      }),
+      '/mcp',
+      { strapiUrl }
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toBe('Bearer resource_metadata="x"');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(await response.text()).toBe('{"error":"invalid_token"}');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ method: 'POST', url: '/mcp', body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' });
+    expect(seen[0].headers).toMatchObject({
+      authorization: 'Bearer mcp_at_customer',
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': '2025-06-18',
+    });
+    for (const name of ['cookie', 'origin', 'ngrok-skip-browser-warning']) expect(seen[0].headers).not.toHaveProperty(name);
+  });
+
+  it('streams server-sent events as Strapi writes them', async () => {
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const { strapiUrl } = await fakeStrapi(async (_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      res.write('event: message\ndata: {"id":1}\n\n');
+      await released; // the second event waits until the test has read the first one
+      res.end('event: message\ndata: {"id":2}\n\n');
+    });
+    const firstEvent = (async () => {
+      const response = await proxyToStrapi(new Request(`${PUBLIC}/mcp`, { method: 'POST', body: '{}' }), '/mcp', { strapiUrl });
+      const reader = response.body!.getReader();
+      return { reader, first: await reader.read() };
+    })();
+    const { reader, first } = await Promise.race([
+      firstEvent,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the first event was held back')), 2000)),
+    ]);
+    expect(new TextDecoder().decode(first.value)).toContain('"id":1');
+    release();
+    let rest = '';
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) rest += new TextDecoder().decode(chunk.value);
+    expect(rest).toContain('"id":2');
+  });
+
+  it('serves catalog images from /uploads', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const { strapiUrl, seen } = await fakeStrapi((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length });
+      res.end(png);
+    });
+    const response = await proxyToStrapi(new Request(`${PUBLIC}/uploads/weekender_50.png`), '/uploads/weekender_50.png', { strapiUrl });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+    expect(seen[0]).toMatchObject({ method: 'GET', url: '/uploads/weekender_50.png' });
+  });
+
+  it('reaches nothing on Strapi but /mcp, the token endpoint and /uploads', async () => {
+    const { strapiUrl, seen } = await fakeStrapi((_req, res) => res.end('reached'));
+    for (const path of ['/admin/init', '/api/strapi-oauth-mcp-manager/oauth/authorize', '/api/strapi-oauth-mcp-manager/oauth/register', '/_health', '/uploads/../admin/init', '/uploads/']) {
+      const response = await proxyToStrapi(new Request(`${PUBLIC}${path}`), path, { strapiUrl });
+      expect(response.status, path).toBe(404);
+    }
+    expect(seen).toEqual([]);
+  });
+
+  it("answers 502 temporarily_unavailable when Strapi isn't running", async () => {
+    const { strapiUrl } = await fakeStrapi(() => {});
+    upstreams.splice(0).forEach((upstream) => upstream.close());
+    const response = await proxyToStrapi(new Request(`${PUBLIC}/mcp`, { method: 'POST', body: '{}' }), '/mcp', { strapiUrl });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: 'temporarily_unavailable' });
+  });
+});
+```
+
+`liff/lib/tunnel.test.ts`:
+
+```ts
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tunnelHeaders } from './tunnel';
+
+describe('tunnelHeaders', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("skips ngrok's warning page when the browser calls Strapi's paths on the app's own origin (LINE mode)", () => {
+    vi.stubGlobal('window', { location: { origin: 'https://maison.example' } });
+    expect(tunnelHeaders('https://maison.example')).toEqual({ 'ngrok-skip-browser-warning': '1' });
+  });
+
+  it('sends nothing cross-origin, where Strapi would refuse an unknown header (local mode), or on the server', () => {
+    vi.stubGlobal('window', { location: { origin: 'http://localhost:3003' } });
+    expect(tunnelHeaders('http://localhost:1338')).toEqual({});
+    vi.unstubAllGlobals();
+    expect(tunnelHeaders('https://maison.example')).toEqual({});
+  });
+});
+```
+
+`liff/lib/liff.test.ts`:
+
+```ts
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The real LIFF SDK, as the app uses it inside LINE (NEXT_PUBLIC_LIFF_MOCK=false).
+const liff = vi.hoisted(() => ({
+  init: vi.fn(async () => {}),
+  isLoggedIn: vi.fn(() => true),
+  getIDToken: vi.fn(() => 'eyJ.line.idtoken'),
+  getAppLanguage: vi.fn(() => 'ja'),
+  login: vi.fn(),
+  logout: vi.fn(),
+}));
+vi.mock('@line/liff', () => ({ default: liff }));
+
+const browser = () => {
+  const store = new Map<string, string>();
+  const location = { href: 'https://maison.example/visits', search: '', reload: vi.fn() };
+  vi.stubGlobal('window', {
+    location,
+    sessionStorage: { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => store.set(key, value) },
+  });
+  return location;
+};
+
+describe('initLiff inside LINE', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_LIFF_MOCK', 'false');
+    vi.stubEnv('NEXT_PUBLIC_LIFF_ID', '1234567890-AbcdEfgh');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("starts LIFF with the app's LIFF ID and passes on LINE's ID token and language", async () => {
+    browser();
+    const { initLiff } = await import('./liff');
+    const state = await initLiff();
+    expect(liff.init).toHaveBeenCalledWith({ liffId: '1234567890-AbcdEfgh' });
+    expect(state).toMatchObject({ locale: 'ja', mock: false });
+    expect(state.getIdToken()).toBe('eyJ.line.idtoken');
+  });
+
+  it('signs in again the way LINE documents it: log out and reload, never liff.login(), and only once a minute', async () => {
+    const location = browser();
+    const { initLiff } = await import('./liff');
+    const state = await initLiff();
+    state.signInAgain();
+    expect(liff.logout).toHaveBeenCalledTimes(1);
+    expect(location.reload).toHaveBeenCalledTimes(1);
+    // Refused again right after: the app and Strapi disagree about the channel. Show the error rather than loop.
+    state.signInAgain();
+    expect(location.reload).toHaveBeenCalledTimes(1);
+    expect(liff.login).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `cd /Users/paul/work/maison-demo/liff && npm test`
+
+Expected: FAIL.
+- `strapi-proxy.test.ts` and `tunnel.test.ts` fail to load: `Cannot find module './strapi-proxy'` and `Cannot find module './tunnel'`.
+- In `liff.test.ts`, "signs in again the way LINE documents it" fails with `expected "spy" to be called 1 times, but got 0 times`: Task 4's `signInAgain` calls `liff.login()` and never reloads. The other LIFF test passes, which pins how `initLiff` starts LIFF inside LINE.
+- `Tests  1 failed | 31 passed (32)`: Tasks 4–7's 30 still pass.
+
+- [ ] **Step 2: Make them pass**
+
+`liff/lib/strapi-proxy.ts`:
+
+```ts
+/**
+ * The app's proxy for the three Strapi paths a phone needs in LINE mode. The phone only ever talks to the app's own
+ * origin (the ngrok tunnel), and Strapi, with its admin, stays on this machine:
+ *   /mcp                                          Strapi's MCP server (streamable HTTP)
+ *   /api/strapi-oauth-mcp-manager/oauth/token     the LINE ID token exchange
+ *   /uploads/*                                    catalog images
+ * Responses stream through as Strapi writes them: an MCP answer is a server-sent event stream. Only the request
+ * headers those calls use reach Strapi: no cookies, no Origin.
+ */
+const PROXIED = /^(\/mcp|\/api\/strapi-oauth-mcp-manager\/oauth\/token|\/uploads\/[^?#]+)$/;
+const REQUEST_HEADERS = [
+  'accept',
+  'authorization',
+  'content-type',
+  'if-modified-since',
+  'if-none-match',
+  'last-event-id',
+  'mcp-protocol-version',
+  'mcp-session-id',
+  'range',
+];
+// Hop-by-hop headers, cookies, and what fetch has already undone: it decompresses, so the encoding and length go too.
+const DROPPED_RESPONSE_HEADERS = [
+  'connection',
+  'content-encoding',
+  'content-length',
+  'keep-alive',
+  'proxy-authenticate',
+  'set-cookie',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+];
+
+/**
+ * Where the app's server reaches Strapi: STRAPI_URL, else Strapi's default port. Never NEXT_PUBLIC_STRAPI_URL, which
+ * in LINE mode is the app's own public address, so the proxy would call itself.
+ */
+export const strapiOrigin = (env: Record<string, string | undefined> = process.env) =>
+  (env.STRAPI_URL || 'http://localhost:1338').replace(/\/+$/, '');
+
+export async function proxyToStrapi(
+  request: Request,
+  path: string,
+  { strapiUrl = strapiOrigin(), fetchImpl = fetch }: { strapiUrl?: string; fetchImpl?: typeof fetch } = {}
+): Promise<Response> {
+  if (!PROXIED.test(path) || path.split('/').includes('..')) {
+    return Response.json({ error: 'not_found' }, { status: 404 });
+  }
+  const headers = new Headers();
+  for (const name of REQUEST_HEADERS) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+  let upstream: Response;
+  try {
+    upstream = await fetchImpl(`${strapiUrl}${path}${new URL(request.url).search}`, {
+      method: request.method,
+      headers,
+      body: hasBody ? await request.arrayBuffer() : undefined,
+      redirect: 'manual',
+      signal: request.signal,
+    });
+  } catch {
+    return Response.json(
+      { error: 'temporarily_unavailable', error_description: "The app couldn't reach Strapi." },
+      { status: 502 }
+    );
+  }
+  const responseHeaders = new Headers(upstream.headers);
+  for (const name of DROPPED_RESPONSE_HEADERS) responseHeaders.delete(name);
+  return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+}
+```
+
+`liff/app/mcp/route.ts`:
+
+```ts
+import { proxyToStrapi } from '@/lib/strapi-proxy';
+
+// Strapi's MCP server on the app's own origin (LINE mode). Strapi itself answers GET and DELETE with 405.
+const proxy = (request: Request) => proxyToStrapi(request, '/mcp');
+export const GET = proxy;
+export const POST = proxy;
+export const DELETE = proxy;
+```
+
+`liff/app/api/strapi-oauth-mcp-manager/oauth/token/route.ts`:
+
+```ts
+import { proxyToStrapi } from '@/lib/strapi-proxy';
+
+// oauth-mcp-manager's token endpoint on the app's own origin (LINE mode): the LINE ID token exchange.
+export const POST = (request: Request) => proxyToStrapi(request, '/api/strapi-oauth-mcp-manager/oauth/token');
+```
+
+`liff/app/uploads/[...path]/route.ts`:
+
+```ts
+import { proxyToStrapi } from '@/lib/strapi-proxy';
+
+// Catalog images on the app's own origin (LINE mode). Strapi builds their absolute URLs from PUBLIC_URL.
+const proxy = (request: Request) => proxyToStrapi(request, new URL(request.url).pathname);
+export const GET = proxy;
+export const HEAD = proxy;
+```
+
+The three routes are dynamic (`ƒ` in `next build`) without any route config: each reads its request.
+
+`liff/lib/tunnel.ts`:
+
+```ts
+/**
+ * Headers for the browser's own calls in LINE mode. There the app is served through an ngrok tunnel, and the browser
+ * reaches Strapi's paths on the app's own origin (the app proxies them). On ngrok's free plan a browser request gets a
+ * warning page (ERR_NGROK_6024) instead of the answer until the visitor has clicked through it, and this header skips
+ * it: https://ngrok.com/docs/pricing-limits/free-plan-limits/#removing-the-interstitial-page
+ * Sent only when `strapiUrl` is the page's own origin. Cross-origin (local mode) Strapi's CORS settings don't allow
+ * it, and on the server there's no tunnel in the way.
+ */
+export const tunnelHeaders = (strapiUrl: string): Record<string, string> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    return new URL(strapiUrl).origin === window.location.origin ? { 'ngrok-skip-browser-warning': '1' } : {};
+  } catch {
+    return {};
+  }
+};
+```
+
+In `liff/lib/liff.ts`, make three replacements. Replace:
+
+```ts
+  /** Inside LINE: a new LINE login, for when the token endpoint answers invalid_grant. It leaves the page. */
+```
+
+with:
+
+```ts
+  /** Inside LINE: a new LINE login, for when the token endpoint answers invalid_grant. It reloads the page. */
+```
+
+Replace:
+
+```ts
+const DEMO_USER_KEY = 'maison.demoUser';
+```
+
+with:
+
+```ts
+const DEMO_USER_KEY = 'maison.demoUser';
+const SIGNED_IN_AGAIN_AT = 'maison.signedInAgainAt';
+```
+
+Replace:
+
+```ts
+    signInAgain: () => {
+      liff.logout(); // drops the stale ID token
+      liff.login({ redirectUri: window.location.href });
+    },
+```
+
+with:
+
+```ts
+    signInAgain: () => {
+      // LINE's way: log out, then reload. Inside LINE, liff.init() signs in again by itself, and liff.login() can't be
+      // used there; in an external browser, init() above calls liff.login(). At most once a minute: refused again right
+      // after a new sign-in, the app and Strapi disagree about the LINE channel, and the screen shows the error instead.
+      try {
+        if (Date.now() - Number(window.sessionStorage.getItem(SIGNED_IN_AGAIN_AT)) < 60_000) return;
+        window.sessionStorage.setItem(SIGNED_IN_AGAIN_AT, String(Date.now()));
+      } catch {
+        return; // without storage a loop can't be told apart: show the error
+      }
+      liff.logout(); // drops the expired ID token
+      window.location.reload();
+    },
+```
+
+In `liff/lib/session.ts`, add at the top, before `export const TOKEN_EXCHANGE`:
+
+```ts
+import { tunnelHeaders } from './tunnel';
+
+```
+
+and replace:
+
+```ts
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+```
+
+with:
+
+```ts
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...tunnelHeaders(strapiUrl),
+        },
+```
+
+In `liff/lib/mcp.ts`, replace:
+
+```ts
+import type { Session } from './session';
+```
+
+with:
+
+```ts
+import type { Session } from './session';
+import { tunnelHeaders } from './tunnel';
+```
+
+and replace:
+
+```ts
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+```
+
+with:
+
+```ts
+        requestInit: {
+          headers: { Authorization: `Bearer ${token}`, ...tunnelHeaders(strapiUrl) },
+        },
+```
+
+`tunnel.ts` imports nothing, so `session.ts` still runs in Node for Task 7's live test and Task 8's API tests. There, `tunnelHeaders` adds nothing.
+
+In `liff/app/concierge/page.tsx`, replace:
+
+```tsx
+import { COPY } from '@/lib/copy';
+import { getMaison } from '@/lib/maison';
+```
+
+with:
+
+```tsx
+import { config } from '@/lib/config';
+import { COPY } from '@/lib/copy';
+import { getMaison } from '@/lib/maison';
+import { tunnelHeaders } from '@/lib/tunnel';
+```
+
+and replace:
+
+```tsx
+        headers: async () => ({ Authorization: `Bearer ${await (await getMaison()).session.getToken()}` }),
+```
+
+with:
+
+```tsx
+        headers: async () => ({
+          Authorization: `Bearer ${await (await getMaison()).session.getToken()}`,
+          ...tunnelHeaders(config.strapiUrl),
+        }),
+```
+
+The concierge's own requests go to `/api/concierge` on the app's origin, which is the tunnel's in LINE mode.
+
+```bash
+cd /Users/paul/work/maison-demo/liff
+npm test && npm run typecheck
+grep -c 'liff.login({ redirectUri' lib/liff.ts
+grep -c 'tunnelHeaders(' lib/session.ts lib/mcp.ts app/concierge/page.tsx
+```
+
+Expected:
+- `Tests  39 passed (39)`: Tasks 4–7's 30, the proxy's 5, the header's 2 and LIFF's 2. Then `tsc` exits 0.
+- `0`: no `liff.login()` is left in `signInAgain`.
+- `lib/session.ts:1`, `lib/mcp.ts:1` and `app/concierge/page.tsx:1`.
+
+- [ ] **Step 3: The header the guard reads, `start:line`, LINE mode's keys, and the proxy end to end**
+
+`liff/next.config.mjs`, replacing Task 3's:
+
+```js
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Strict mode runs effects twice in development, which would record every tool call twice in the agent view.
+  reactStrictMode: false,
+  // liff/ has its own package-lock.json, and so do the repo root and strapi/. Pin Turbopack's workspace root to liff/.
+  turbopack: { root: dirname(fileURLToPath(import.meta.url)) },
+  // Which LIFF this build signs in with: `npm run tunnel` refuses to expose a build on the LIFF mock.
+  // Next loads liff/.env before this file, so the value is the one the build inlines.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [{ key: 'X-Maison-Liff', value: process.env.NEXT_PUBLIC_LIFF_MOCK === 'false' ? 'line' : 'mock' }],
+      },
+    ];
+  },
+};
+
+export default nextConfig;
+```
+
+`demo-app` restarts by itself when `next.config.mjs` changes.
+
+In `liff/package.json` `scripts`, add after `"start"`:
+
+```json
+    "start:line": "node ../scripts/line-mode.mjs require-line && next build && next start -H 127.0.0.1 -p 3003",
+```
+
+It refuses outside LINE mode, builds with LINE mode's `NEXT_PUBLIC_*` values, and serves the build on 127.0.0.1 without the verify mock.
+
+In `liff/.env.example`, add after `NEXT_PUBLIC_DEMO_LOCALE=ja`:
+
+```
+# LINE mode (`npm run mode:line`; README, option B): your LIFF app's LIFF ID, your LINE Login channel's ID, and your
+# ngrok domain without https://. They stay in this file: never in the README, a commit or a log.
+LINE_MODE_LIFF_ID=
+LINE_MODE_CHANNEL_ID=
+LINE_MODE_DOMAIN=
+# Where the app's server reaches Strapi: the proxy in LINE mode, and the concierge. `npm run mode:*` sets it.
+STRAPI_URL=http://localhost:1338
+```
+
+`liff/scripts/check-strapi-proxy.mjs`:
+
+```js
+// Checks the app's Strapi proxy end to end, the way LINE mode serves it: the production build (`next start`, with
+// Next's compression on) in front of a stand-in for Strapi, both on free ports. Run `npm run build` first.
+//   - an MCP answer streams: its first event arrives before Strapi writes the second, 1.5 s later
+//   - the token endpoint's answer, status and Retry-After come back as Strapi sent them
+//   - a catalog image comes back byte for byte
+//   - nothing else reaches Strapi: /admin, the OAuth authorize and register pages, /_health
+//   - every answer says which LIFF the build signs in with (X-Maison-Liff), which `npm run tunnel` checks
+// From liff/: node scripts/check-strapi-proxy.mjs. Exits 1 on the first failed check.
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+const freePort = () =>
+  new Promise((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+
+// The stand-in for Strapi records every path it's asked for.
+const reached = [];
+const strapi = createServer((req, res) => {
+  reached.push(`${req.method} ${req.url}`);
+  if (req.url === '/mcp') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    res.write('event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{}}\n\n');
+    setTimeout(() => res.end('event: message\ndata: {"jsonrpc":"2.0","id":2,"result":{}}\n\n'), 1500);
+  } else if (req.url === '/api/strapi-oauth-mcp-manager/oauth/token') {
+    res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '5' });
+    res.end('{"error":"temporarily_unavailable"}');
+  } else if (req.url === '/uploads/weekender_50.png') {
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    res.end(PNG);
+  } else {
+    res.writeHead(200);
+    res.end('Strapi was reached');
+  }
+});
+await new Promise((resolve) => strapi.listen(0, '127.0.0.1', resolve));
+const appPort = await freePort();
+const app = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-H', '127.0.0.1', '-p', String(appPort)], {
+  env: { ...process.env, STRAPI_URL: `http://127.0.0.1:${strapi.address().port}` },
+  stdio: ['ignore', 'ignore', 'inherit'],
+});
+process.on('exit', () => app.kill('SIGTERM')); // also when a check throws
+const base = `http://127.0.0.1:${appPort}`;
+
+let failed = false;
+const check = (ok, label) => {
+  console.log(`${ok ? 'ok' : 'FAILED'}: ${label}`);
+  if (!ok) failed = true;
+};
+try {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    try {
+      await fetch(`${base}/`);
+      break;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
+  const home = await fetch(`${base}/`);
+  const liff = home.headers.get('x-maison-liff');
+  check(home.status === 200 && (liff === 'mock' || liff === 'line'), `the app answers with X-Maison-Liff: ${liff}`);
+
+  const started = performance.now();
+  const mcp = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'Accept-Encoding': 'gzip' },
+    body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+  });
+  const reader = mcp.body.getReader();
+  const first = await reader.read();
+  const firstAt = performance.now() - started;
+  let rest = '';
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) rest += new TextDecoder().decode(chunk.value);
+  check(
+    mcp.status === 200 && new TextDecoder().decode(first.value).includes('"id":1') && firstAt < 1000 && rest.includes('"id":2'),
+    `/mcp streams: the first event after ${Math.round(firstAt)} ms, before Strapi wrote the second (1500 ms)`
+  );
+
+  const token = await fetch(`${base}/api/strapi-oauth-mcp-manager/oauth/token`, { method: 'POST', body: 'grant_type=x' });
+  check(
+    token.status === 503 && token.headers.get('retry-after') === '5' && (await token.json()).error === 'temporarily_unavailable',
+    'the token endpoint passes back 503, Retry-After: 5 and temporarily_unavailable'
+  );
+
+  const image = await fetch(`${base}/uploads/weekender_50.png`);
+  check(image.headers.get('content-type') === 'image/png' && Buffer.from(await image.arrayBuffer()).equals(PNG), '/uploads serves the image');
+
+  const before = reached.length;
+  for (const [method, path] of [
+    ['GET', '/admin'],
+    ['GET', '/admin/init'],
+    ['GET', '/api/strapi-oauth-mcp-manager/oauth/authorize'],
+    ['POST', '/api/strapi-oauth-mcp-manager/oauth/register'],
+    ['GET', '/_health'],
+  ]) {
+    const response = await fetch(`${base}${path}`, { method });
+    check(response.status === 404, `${method} ${path} answers 404 from the app`);
+  }
+  check(reached.length === before, `Strapi was reached only for the three proxied paths (${reached.join(', ')})`);
+} finally {
+  app.kill('SIGTERM');
+  strapi.close();
+}
+process.exitCode = failed ? 1 : 0;
+```
+
+```bash
+cd /Users/paul/work/maison-demo/liff
+npm run build
+node scripts/check-strapi-proxy.mjs
+```
+
+Expected:
+- **The build** lists `ƒ /api/strapi-oauth-mcp-manager/oauth/token`, `ƒ /mcp` and `ƒ /uploads/[...path]`. Building while `demo-app` runs is fine: Next 16 keeps the dev server's files in `.next/dev`.
+- **The check** starts the build and a stand-in for Strapi on free ports, prints these lines (the times vary), exits 0, and stops both:
+
+  ```
+  ok: the app answers with X-Maison-Liff: mock
+  ok: /mcp streams: the first event after 18 ms, before Strapi wrote the second (1500 ms)
+  ok: the token endpoint passes back 503, Retry-After: 5 and temporarily_unavailable
+  ok: /uploads serves the image
+  ok: GET /admin answers 404 from the app
+  ok: GET /admin/init answers 404 from the app
+  ok: GET /api/strapi-oauth-mcp-manager/oauth/authorize answers 404 from the app
+  ok: POST /api/strapi-oauth-mcp-manager/oauth/register answers 404 from the app
+  ok: GET /_health answers 404 from the app
+  ok: Strapi was reached only for the three proxied paths (POST /mcp, POST /api/strapi-oauth-mcp-manager/oauth/token, GET /uploads/weekender_50.png)
+  ```
+
+  `mock`, because `liff/.env` is in local mode. A first event at or after 1000 ms means the proxy buffers: fix it before going on.
+
+- [ ] **Step 4: The mode switch and the tunnel guard, test first**
+
+`scripts/line-mode.test.mjs`:
+
+```js
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+
+import { main, readEnv } from './line-mode.mjs';
+
+const SECRET = 'jwt-secret-that-must-never-print';
+const INPUTS = { LINE_MODE_LIFF_ID: '1234567891-AbcdEfgh', LINE_MODE_CHANNEL_ID: '1234567891', LINE_MODE_DOMAIN: 'maison-test.ngrok-free.dev' };
+
+/** A demo checkout in local mode, as `npm install` and `npm run setup` leave it, plus `liffExtra` in liff/.env. */
+const demo = (liffExtra = {}) => {
+  const root = mkdtempSync(join(tmpdir(), 'maison-mode-'));
+  mkdirSync(join(root, 'strapi'));
+  mkdirSync(join(root, 'liff'));
+  const lines = (values) => Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join('');
+  writeFileSync(
+    join(root, 'strapi', '.env'),
+    lines({ PORT: '1338', JWT_SECRET: SECRET, LINE_LOGIN_CHANNEL_ID: '1234567890', LINE_VERIFY_URL: 'http://127.0.0.1:4545/verify', MAISON_LIFF_URL: 'http://localhost:3003', MAISON_APP_ORIGIN: '', PUBLIC_URL: '' }),
+    { mode: 0o600 }
+  );
+  writeFileSync(join(root, 'liff', '.env'), lines({ NEXT_PUBLIC_STRAPI_URL: 'http://localhost:1338', NEXT_PUBLIC_MAISON_CLIENT_ID: 'mcp_client_test', ...liffExtra }), { mode: 0o600 });
+  return root;
+};
+const run = (args, root) => {
+  const lines = [];
+  const code = main(args, { root, log: (line) => lines.push(line) });
+  return { code, out: lines.join('\n') };
+};
+const env = (root, app) => readEnv(join(root, app, '.env'));
+const pick = (values, keys) => Object.fromEntries(keys.map((key) => [key, values[key]]));
+const STRAPI_KEYS = ['LINE_LOGIN_CHANNEL_ID', 'LINE_VERIFY_URL', 'MAISON_LIFF_URL', 'PUBLIC_URL'];
+const LIFF_KEYS = ['NEXT_PUBLIC_LIFF_MOCK', 'NEXT_PUBLIC_LIFF_ID', 'NEXT_PUBLIC_STRAPI_URL', 'STRAPI_URL'];
+
+test('switches to LINE mode and back, and a second run of either changes nothing', () => {
+  const root = demo(INPUTS);
+  assert.match(run(['status'], root).out, /^Mode: local /);
+
+  assert.equal(run(['line'], root).code, 0);
+  assert.deepEqual(pick(env(root, 'strapi'), STRAPI_KEYS), {
+    LINE_LOGIN_CHANNEL_ID: '1234567891',
+    LINE_VERIFY_URL: '',
+    MAISON_LIFF_URL: 'https://liff.line.me/1234567891-AbcdEfgh',
+    PUBLIC_URL: 'https://maison-test.ngrok-free.dev',
+  });
+  assert.deepEqual(pick(env(root, 'liff'), LIFF_KEYS), {
+    NEXT_PUBLIC_LIFF_MOCK: 'false',
+    NEXT_PUBLIC_LIFF_ID: '1234567891-AbcdEfgh',
+    NEXT_PUBLIC_STRAPI_URL: 'https://maison-test.ngrok-free.dev',
+    STRAPI_URL: 'http://localhost:1338',
+  });
+  const files = () => ['strapi', 'liff'].map((app) => readFileSync(join(root, app, '.env'), 'utf8')).join('\n');
+  const once = files();
+  run(['line'], root);
+  assert.equal(files(), once);
+  assert.match(run(['status'], root).out, /^Mode: LINE /);
+  assert.equal(run(['require-line'], root).code, 0);
+
+  assert.equal(run(['local'], root).code, 0);
+  assert.deepEqual(pick(env(root, 'strapi'), STRAPI_KEYS), {
+    LINE_LOGIN_CHANNEL_ID: '1234567890',
+    LINE_VERIFY_URL: 'http://127.0.0.1:4545/verify',
+    MAISON_LIFF_URL: 'http://localhost:3003',
+    PUBLIC_URL: '',
+  });
+  assert.deepEqual(pick(env(root, 'liff'), LIFF_KEYS), {
+    NEXT_PUBLIC_LIFF_MOCK: 'true',
+    NEXT_PUBLIC_LIFF_ID: '',
+    NEXT_PUBLIC_STRAPI_URL: 'http://localhost:1338',
+    STRAPI_URL: 'http://localhost:1338',
+  });
+  assert.equal(env(root, 'strapi').JWT_SECRET, SECRET);
+  assert.equal(env(root, 'liff').NEXT_PUBLIC_MAISON_CLIENT_ID, 'mcp_client_test');
+  for (const app of ['strapi', 'liff']) assert.equal(statSync(join(root, app, '.env')).mode & 0o777, 0o600);
+  assert.match(run(['status'], root).out, /^Mode: local /);
+  assert.equal(run(['require-line'], root).code, 1);
+});
+
+test("refuses LINE mode without your LINE values, or with the mock's channel, and changes nothing", () => {
+  for (const liffExtra of [{}, { ...INPUTS, LINE_MODE_CHANNEL_ID: '1234567890' }, { ...INPUTS, LINE_MODE_DOMAIN: 'https://maison-test.ngrok-free.dev' }]) {
+    const root = demo(liffExtra);
+    const before = readFileSync(join(root, 'strapi', '.env'), 'utf8');
+    const { code, out } = run(['line'], root);
+    assert.equal(code, 1);
+    assert.match(out, /LINE_MODE_/);
+    assert.equal(readFileSync(join(root, 'strapi', '.env'), 'utf8'), before);
+  }
+});
+
+test('never prints a value from either file', () => {
+  const root = demo(INPUTS);
+  const out = ['status', 'line', 'status', 'require-line', 'local', 'require-line'].map((command) => run([command], root).out).join('\n');
+  for (const value of [SECRET, ...Object.values(INPUTS), 'mcp_client_test']) assert.ok(!out.includes(value), `printed ${value}`);
+});
+```
+
+`scripts/line-tunnel.test.mjs`:
+
+```js
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, test } from 'node:test';
+
+import { main as switchMode, writeEnv } from './line-mode.mjs';
+import { checkTunnel, main } from './line-tunnel.mjs';
+
+const SECRET = 'jwt-secret-that-must-never-print';
+const INPUTS = 'LINE_MODE_LIFF_ID=1234567891-AbcdEfgh\nLINE_MODE_CHANNEL_ID=1234567891\nLINE_MODE_DOMAIN=maison-test.ngrok-free.dev\n';
+
+/** A demo checkout switched to `mode` with the real mode script. */
+const demo = (mode) => {
+  const root = mkdtempSync(join(tmpdir(), 'maison-tunnel-'));
+  mkdirSync(join(root, 'strapi'));
+  mkdirSync(join(root, 'liff'));
+  writeFileSync(join(root, 'strapi', '.env'), `PORT=1338\nJWT_SECRET=${SECRET}\nLINE_LOGIN_CHANNEL_ID=1234567890\nLINE_VERIFY_URL=http://127.0.0.1:4545/verify\n`, { mode: 0o600 });
+  writeFileSync(join(root, 'liff', '.env'), `NEXT_PUBLIC_STRAPI_URL=http://localhost:1338\nNEXT_PUBLIC_MAISON_CLIENT_ID=mcp_client_test\n${INPUTS}`, { mode: 0o600 });
+  assert.equal(switchMode([mode], { root, log: () => {} }), 0);
+  return root;
+};
+
+const servers = [];
+after(() => servers.forEach((server) => server.close()));
+const listen = async (handler) => {
+  const server = createServer(handler);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  servers.push(server);
+  return server.address().port;
+};
+/** A port nothing listens on. */
+const freePort = async () => {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+};
+/** The app on :3003, as the guard sees it: its X-Maison-Liff header, and the token endpoint it proxies to Strapi. */
+const fakeApp = async ({ liff = 'line', token = [400, { error: 'invalid_grant' }] } = {}) => {
+  const seen = [];
+  const port = await listen((req, res) => {
+    seen.push(`${req.method} ${req.url}`);
+    if (req.url === '/api/strapi-oauth-mcp-manager/oauth/token') {
+      res.writeHead(token[0], { 'Content-Type': 'application/json', 'X-Maison-Liff': liff });
+      return res.end(JSON.stringify(token[1]));
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html', 'X-Maison-Liff': liff });
+    res.end('<p>MAISON</p>');
+  });
+  return { appUrl: `http://127.0.0.1:${port}`, seen };
+};
+
+test('passes when LINE verifies ID tokens, the app is built for LINE, and the verify mock is off', async () => {
+  const { appUrl, seen } = await fakeApp();
+  assert.deepEqual(await checkTunnel({ root: demo('line'), appUrl, mockVerifyPort: await freePort() }), []);
+  assert.ok(seen.includes('POST /api/strapi-oauth-mcp-manager/oauth/token'), 'probed the running Strapi through the app');
+});
+
+test('refuses while strapi/.env sets LINE_VERIFY_URL', async () => {
+  const root = demo('line');
+  writeEnv(join(root, 'strapi', '.env'), { LINE_VERIFY_URL: 'http://127.0.0.1:4545/verify' });
+  const { appUrl } = await fakeApp();
+  const problems = await checkTunnel({ root, appUrl, mockVerifyPort: await freePort() });
+  assert.ok(problems.some((problem) => problem.startsWith('strapi/.env sets LINE_VERIFY_URL')), problems.join('\n'));
+});
+
+test('refuses in local mode, and while the app on :3003 is built for the LIFF mock', async () => {
+  const { appUrl } = await fakeApp({ liff: 'mock' });
+  const mockVerifyPort = await freePort();
+  const local = await checkTunnel({ root: demo('local'), appUrl, mockVerifyPort });
+  assert.ok(local.some((problem) => problem.includes('NEXT_PUBLIC_LIFF_MOCK (liff/.env)')), local.join('\n'));
+  const built = await checkTunnel({ root: demo('line'), appUrl, mockVerifyPort });
+  assert.ok(built.some((problem) => problem.includes('built for the LIFF mock')), built.join('\n'));
+});
+
+test("refuses while something answers on the verify mock's port, and doesn't probe Strapi then", async () => {
+  const { appUrl, seen } = await fakeApp();
+  const mockVerifyPort = await listen((_req, res) => res.end('{}'));
+  const problems = await checkTunnel({ root: demo('line'), appUrl, mockVerifyPort });
+  assert.ok(problems.some((problem) => problem.includes(`127.0.0.1:${mockVerifyPort}`)), problems.join('\n'));
+  assert.ok(!seen.some((request) => request.includes('/oauth/token')), 'no forged token was sent');
+});
+
+test('refuses when the running Strapi accepts a forged ID token, or cannot check one', async () => {
+  for (const [token, words] of [
+    [[200, { access_token: 'mcp_at_forged', token_type: 'Bearer' }], 'accepted a forged'],
+    [[503, { error: 'temporarily_unavailable' }], "couldn't check"],
+    [[401, { error: 'invalid_client' }], 'npm run setup'],
+  ]) {
+    const { appUrl } = await fakeApp({ token });
+    const problems = await checkTunnel({ root: demo('line'), appUrl, mockVerifyPort: await freePort() });
+    assert.ok(problems.some((problem) => problem.includes(words)), `${words}: ${problems.join('\n')}`);
+  }
+});
+
+test('a dry run starts no tunnel and never prints a value from either file', async () => {
+  const lines = [];
+  const started = [];
+  const { appUrl } = await fakeApp();
+  const code = await main(['--dry-run'], {
+    root: demo('line'),
+    appUrl,
+    mockVerifyPort: await freePort(),
+    log: (line) => lines.push(line),
+    startNgrok: (args) => started.push(args),
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(started, []);
+  const out = lines.join('\n');
+  for (const value of [SECRET, '1234567891-AbcdEfgh', '1234567891', 'maison-test.ngrok-free.dev', 'mcp_client_test']) {
+    assert.ok(!out.includes(value), `printed ${value}`);
+  }
+});
+
+test('starts ngrok on your domain, with its traffic inspector off, once every check passes', async () => {
+  const started = [];
+  const { appUrl } = await fakeApp();
+  const code = await main([], {
+    root: demo('line'),
+    appUrl,
+    mockVerifyPort: await freePort(),
+    log: () => {},
+    startNgrok: async (args) => {
+      started.push(args);
+      return 0;
+    },
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(started, [['http', '127.0.0.1:3003', '--url=https://maison-test.ngrok-free.dev', '--inspect=false']]);
+});
+```
+
+Run: `cd /Users/paul/work/maison-demo && node --test scripts/line-mode.test.mjs scripts/line-tunnel.test.mjs`
+
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`: `Cannot find module '…/scripts/line-mode.mjs'`.
+
+`scripts/line-mode.mjs`:
+
+```js
+// Switches how the demo signs customers in, by rewriting a few keys in strapi/.env and liff/.env:
+//   local  the LIFF mock in the app, and the app's local stand-in for LINE's verify endpoint (the default, and the stage)
+//   line   your own LIFF app inside LINE, with LINE verifying ID tokens, on one public https origin (your ngrok domain)
+// LINE mode takes your values from liff/.env: LINE_MODE_LIFF_ID, LINE_MODE_CHANNEL_ID and LINE_MODE_DOMAIN.
+// From the repo root: npm run mode (shows the mode), npm run mode:line, npm run mode:local.
+// Restart Strapi and the app after a switch. Never prints a value from either file.
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const MOCK_CHANNEL_ID = '1234567890';
+
+/** An env file's KEY=value lines ({} when it's missing). Quotes around a value are dropped. */
+export const readEnv = (file) => {
+  const env = {};
+  if (!existsSync(file)) return env;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (match) env[match[1]] = match[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return env;
+};
+
+/** Sets KEY=value lines, adding the ones that are missing, and leaves the file readable by you only. */
+export const writeEnv = (file, values) => {
+  let text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  for (const [key, value] of Object.entries(values)) {
+    const pattern = new RegExp(`^${key}=.*$`, 'm');
+    text = pattern.test(text)
+      ? text.replace(pattern, () => `${key}=${value}`)
+      : `${text}${text === '' || text.endsWith('\n') ? '' : '\n'}${key}=${value}\n`;
+  }
+  writeFileSync(file, text, { mode: 0o600 });
+  chmodSync(file, 0o600); // `mode` applies only when the file is created
+};
+
+/** LINE mode's values from liff/.env, and what's wrong with them (key names only). */
+export const lineInputs = (liffEnv) => {
+  const liffId = liffEnv.LINE_MODE_LIFF_ID ?? '';
+  const channelId = liffEnv.LINE_MODE_CHANNEL_ID ?? '';
+  const domain = liffEnv.LINE_MODE_DOMAIN ?? '';
+  const problems = [];
+  if (!/^\d+-[A-Za-z0-9]+$/.test(liffId)) {
+    problems.push("LINE_MODE_LIFF_ID: your LIFF app's LIFF ID, like 1234567890-AbcdEfgh (the LIFF tab of your LINE Login channel)");
+  }
+  if (!/^\d+$/.test(channelId) || channelId === MOCK_CHANNEL_ID) {
+    problems.push("LINE_MODE_CHANNEL_ID: your LINE Login channel's ID, digits only (its Basic settings tab)");
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)) {
+    problems.push('LINE_MODE_DOMAIN: your ngrok domain, without https:// or a slash, like your-name.ngrok-free.dev');
+  }
+  const warnings =
+    problems.length === 0 && !liffId.startsWith(`${channelId}-`)
+      ? ["LINE_MODE_LIFF_ID doesn't start with LINE_MODE_CHANNEL_ID and a dash. A LIFF ID starts with its channel's ID: check that both come from the same channel."]
+      : [];
+  return { liffId, channelId, domain, problems, warnings };
+};
+
+/** What each mode sets in strapi/.env and liff/.env. */
+const modeValues = (mode, strapiEnv, liffEnv) => {
+  const strapiUrl = `http://localhost:${strapiEnv.PORT || 1338}`;
+  if (mode === 'local') {
+    return {
+      strapi: {
+        LINE_LOGIN_CHANNEL_ID: MOCK_CHANNEL_ID,
+        LINE_VERIFY_URL: `http://127.0.0.1:${liffEnv.MOCK_LINE_VERIFY_PORT || 4545}/verify`,
+        MAISON_LIFF_URL: 'http://localhost:3003',
+        PUBLIC_URL: '',
+      },
+      liff: { NEXT_PUBLIC_LIFF_MOCK: 'true', NEXT_PUBLIC_LIFF_ID: '', NEXT_PUBLIC_STRAPI_URL: strapiUrl, STRAPI_URL: strapiUrl },
+    };
+  }
+  const { liffId, channelId, domain } = lineInputs(liffEnv);
+  return {
+    // Strapi verifies ID tokens with LINE for your channel, and builds its public URLs (media, OAuth metadata) on the
+    // app's origin, which proxies /mcp, the token endpoint and /uploads to it.
+    strapi: { LINE_LOGIN_CHANNEL_ID: channelId, LINE_VERIFY_URL: '', MAISON_LIFF_URL: `https://liff.line.me/${liffId}`, PUBLIC_URL: `https://${domain}` },
+    // The browser calls Strapi's paths on the app's own origin; the app's server reaches Strapi directly.
+    liff: { NEXT_PUBLIC_LIFF_MOCK: 'false', NEXT_PUBLIC_LIFF_ID: liffId, NEXT_PUBLIC_STRAPI_URL: `https://${domain}`, STRAPI_URL: strapiUrl },
+  };
+};
+
+/** The keys, as "KEY (file)", that aren't what `mode` sets. */
+export const modeDifferences = (root, mode) => {
+  const strapiEnv = readEnv(join(root, 'strapi', '.env'));
+  const liffEnv = readEnv(join(root, 'liff', '.env'));
+  const values = modeValues(mode, strapiEnv, liffEnv);
+  return [
+    ...Object.entries(values.strapi).filter(([key, value]) => (strapiEnv[key] ?? '') !== value).map(([key]) => `${key} (strapi/.env)`),
+    ...Object.entries(values.liff).filter(([key, value]) => (liffEnv[key] ?? '') !== value).map(([key]) => `${key} (liff/.env)`),
+  ];
+};
+
+/** 'line' when every key is LINE mode's; 'local' while Strapi trusts the verify mock and the app uses the LIFF mock. */
+export const currentMode = (root) => {
+  const strapiEnv = readEnv(join(root, 'strapi', '.env'));
+  const liffEnv = readEnv(join(root, 'liff', '.env'));
+  if (lineInputs(liffEnv).problems.length === 0 && modeDifferences(root, 'line').length === 0) return 'line';
+  if (strapiEnv.LINE_VERIFY_URL && liffEnv.NEXT_PUBLIC_LIFF_MOCK !== 'false') return 'local';
+  return 'mixed';
+};
+
+export const main = (args, { root = ROOT, log = console.log } = {}) => {
+  const [command = 'status'] = args;
+  const liffEnv = readEnv(join(root, 'liff', '.env'));
+  const strapiEnv = readEnv(join(root, 'strapi', '.env'));
+  const mode = currentMode(root);
+
+  if (command === 'status' || command === 'require-line') {
+    const label = { line: 'LINE (your LIFF app; LINE verifies ID tokens)', local: 'local (the LIFF mock and the verify mock)', mixed: 'mixed' }[mode];
+    log(`Mode: ${label}.`);
+    if (mode === 'mixed') log(`Not in LINE mode: ${modeDifferences(root, 'line').join(', ')}. Run npm run mode:line or npm run mode:local.`);
+    if (command === 'require-line' && mode !== 'line') {
+      log('This needs LINE mode: run npm run mode:line first.');
+      return 1;
+    }
+    return 0;
+  }
+  if (command === 'line') {
+    const { problems, warnings } = lineInputs(liffEnv);
+    if (problems.length > 0) {
+      log('Not switched. Set these in liff/.env first:');
+      for (const problem of problems) log(`- ${problem}`);
+      return 1;
+    }
+    for (const warning of warnings) log(`Warning: ${warning}`);
+  }
+  if (command !== 'line' && command !== 'local') {
+    log('Usage: node scripts/line-mode.mjs status | line | local');
+    return 1;
+  }
+  const values = modeValues(command, strapiEnv, liffEnv);
+  writeEnv(join(root, 'strapi', '.env'), values.strapi);
+  writeEnv(join(root, 'liff', '.env'), values.liff);
+  if (command === 'line') {
+    log('LINE mode: strapi/.env and liff/.env now use LINE_MODE_LIFF_ID, LINE_MODE_CHANNEL_ID and LINE_MODE_DOMAIN (liff/.env).');
+    log('Next: restart Strapi, start the app with `npm run start:line` (not `npm run dev`), then `npm run tunnel`.');
+  } else {
+    log('Local mode: strapi/.env and liff/.env use the LIFF mock and the local LINE verify mock again.');
+    log('Next: stop the tunnel and the LINE-mode app, then restart Strapi and start the app with `npm run dev`.');
+  }
+  return 0;
+};
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(process.argv.slice(2));
+```
+
+`scripts/line-tunnel.mjs`:
+
+```js
+// Opens LINE mode's one public https origin: ngrok from your domain (LINE_MODE_DOMAIN in liff/.env) to the app on
+// 127.0.0.1:3003. It refuses unless the demo is safely in LINE mode, because with the local verify mock behind the tunnel
+// anyone on the internet could sign in as any customer. It checks that:
+//   - strapi/.env has no LINE_VERIFY_URL, and both .env files are in LINE mode (npm run mode:line)
+//   - nothing answers on the verify mock's port, 127.0.0.1:4545 (`npm run dev` starts the mock; LINE mode uses
+//     `npm run start:line`, which doesn't)
+//   - the app on :3003 was built for LINE, not the LIFF mock (its X-Maison-Liff header)
+//   - the running Strapi, reached through the app, refuses a forged ID token: LINE checks it (400 invalid_grant)
+// Only the app is exposed: it proxies Strapi's /mcp, token endpoint and /uploads, and Strapi's admin stays here.
+// ngrok runs with --inspect=false, so its local inspector (:4040) keeps no copy of customers' tokens.
+// From the repo root: npm run tunnel, or `npm run tunnel -- --dry-run` for the checks alone. Prints no .env value.
+import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { lineInputs, modeDifferences, readEnv } from './line-mode.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The app listens on this machine only; ngrok connects to it here, so phones reach it only through the tunnel.
+const APP = '127.0.0.1:3003';
+
+/** Whether anything accepts a TCP connection on 127.0.0.1:port within a second. */
+const answers = (port) =>
+  new Promise((resolve) => {
+    const socket = connect({ host: '127.0.0.1', port });
+    const done = (result) => {
+      socket.destroy();
+      resolve(result);
+    };
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+    socket.setTimeout(1000, () => done(false));
+  });
+
+/** Everything that stands in the way of a safe tunnel, in words, without values. An empty list means go. */
+export const checkTunnel = async ({ root = ROOT, appUrl = `http://${APP}`, mockVerifyPort } = {}) => {
+  const strapiEnv = readEnv(join(root, 'strapi', '.env'));
+  const liffEnv = readEnv(join(root, 'liff', '.env'));
+  const problems = [];
+  if (strapiEnv.LINE_VERIFY_URL) {
+    problems.push("strapi/.env sets LINE_VERIFY_URL, so Strapi would trust the local mock's ID tokens. Run npm run mode:line, then restart Strapi.");
+  }
+  const inputs = lineInputs(liffEnv);
+  if (inputs.problems.length > 0) problems.push(`Set your LINE values in liff/.env: ${inputs.problems.join('; ')}.`);
+  const differences = modeDifferences(root, 'line').filter((key) => !key.startsWith('LINE_VERIFY_URL'));
+  if (inputs.problems.length === 0 && differences.length > 0) {
+    problems.push(`Not in LINE mode: ${differences.join(', ')}. Run npm run mode:line, then restart Strapi and the app.`);
+  }
+
+  const port = Number(mockVerifyPort ?? (liffEnv.MOCK_LINE_VERIFY_PORT || 4545));
+  const mockRunning = await answers(port);
+  if (mockRunning) {
+    problems.push(`Something answers on 127.0.0.1:${port}, the LINE verify mock's port. Stop the app's dev server (npm run dev starts the mock); LINE mode runs npm run start:line.`);
+  }
+
+  let liff = null;
+  try {
+    liff = (await fetch(`${appUrl}/`, { signal: AbortSignal.timeout(10_000) })).headers.get('x-maison-liff') ?? 'unknown';
+  } catch {
+    problems.push(`The app isn't answering on ${appUrl}. Start it with npm run start:line.`);
+  }
+  if (liff !== null && liff !== 'line') {
+    problems.push(`The app on ${appUrl} was built for the LIFF mock (X-Maison-Liff: ${liff}). Stop it, and start it with npm run start:line.`);
+  }
+
+  // Last, and only once nothing else is wrong: a forged ID token, through the app, to the running Strapi.
+  if (problems.length === 0) {
+    let status = 0;
+    let error = '';
+    try {
+      const response = await fetch(`${appUrl}/api/strapi-oauth-mcp-manager/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+          client_id: liffEnv.NEXT_PUBLIC_MAISON_CLIENT_ID ?? '',
+          subject_token: `valid.U${'0'.repeat(32)}`, // what the verify mock accepts, and LINE refuses
+          subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      status = response.status;
+      error = (await response.json().catch(() => ({}))).error ?? '';
+    } catch {
+      error = 'unreachable';
+    }
+    if (status >= 200 && status < 300) {
+      problems.push('Strapi accepted a forged ID token: it still verifies against a mock. Restart Strapi after npm run mode:line, and stop anything on the mock\'s port.');
+    } else if (status === 400 && error === 'invalid_grant') {
+      // LINE refused it: the answer we want.
+    } else if (error === 'temporarily_unavailable') {
+      problems.push("Strapi couldn't check an ID token with its verify endpoint. Restart Strapi after npm run mode:line (it may still point at the stopped mock), and check that this laptop is online.");
+    } else if (error === 'invalid_client' || error === 'unauthorized_client') {
+      problems.push("Strapi doesn't accept the app's OAuth client for LINE sign-in. Run npm run setup, then restart the app (npm run start:line).");
+    } else {
+      problems.push(`The token endpoint answered ${status || 'nothing'}${error ? ` (${error})` : ''} through the app. Check that Strapi is running on STRAPI_URL (liff/.env).`);
+    }
+  }
+  return problems;
+};
+
+const runNgrok = (args) =>
+  new Promise((resolve) => {
+    const child = spawn('ngrok', args, { stdio: 'inherit' });
+    child.once('error', () => {
+      console.error('ngrok isn\'t installed, or not on your PATH: https://ngrok.com/download, then `ngrok config add-authtoken`.');
+      resolve(1);
+    });
+    child.once('exit', (code) => resolve(code ?? 0));
+  });
+
+export const main = async (args, { root = ROOT, appUrl, mockVerifyPort, log = console.log, startNgrok = runNgrok } = {}) => {
+  const problems = await checkTunnel({ root, appUrl, mockVerifyPort });
+  if (problems.length > 0) {
+    log('No tunnel. Fix these first:');
+    for (const problem of problems) log(`- ${problem}`);
+    return 1;
+  }
+  log('Safe to open: LINE verifies ID tokens, the app is built for LINE, and the verify mock is off.');
+  if (args.includes('--dry-run')) {
+    log('Dry run: ngrok not started.');
+    return 0;
+  }
+  const { domain } = lineInputs(readEnv(join(root, 'liff', '.env')));
+  log(`Starting ngrok on LINE_MODE_DOMAIN (liff/.env) for the app on ${APP}. Ctrl-C stops it.`);
+  return startNgrok(['http', APP, `--url=https://${domain}`, '--inspect=false']);
+};
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await main(process.argv.slice(2));
+```
+
+The root `package.json`, replacing Task 8's:
+
+```json
+{
+  "name": "maison-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "From UX to AX: one set of Strapi MCP tools serving a LINE app, a customer's agent and an ops agent.",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "postinstall": "npm install --prefix strapi && npm install --prefix liff && node scripts/init-env.mjs",
+    "dev": "concurrently -k -n strapi,app -c magenta,green \"npm run develop --prefix strapi\" \"npm run dev --prefix liff\"",
+    "dev:strapi": "npm run develop --prefix strapi",
+    "dev:app": "npm run dev --prefix liff",
+    "setup": "node --env-file=strapi/.env strapi/scripts/maison-setup.mjs",
+    "mode": "node scripts/line-mode.mjs status",
+    "mode:line": "node scripts/line-mode.mjs line",
+    "mode:local": "node scripts/line-mode.mjs local",
+    "start:line": "npm run start:line --prefix liff",
+    "tunnel": "node scripts/line-tunnel.mjs",
+    "test": "npm test --prefix liff && npm test --prefix strapi/src/plugins/maison && node strapi/scripts/share-strapi-utils.mjs --check && node --test scripts/line-mode.test.mjs scripts/line-tunnel.test.mjs",
+    "test:e2e": "npm run test:e2e --prefix liff",
+    "test:live": "npm run test:live --prefix liff"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
+```
+
+Only scripts change, so there's nothing to install: the lockfile stays as it is.
+
+```bash
+cd /Users/paul/work/maison-demo
+node --test scripts/line-mode.test.mjs scripts/line-tunnel.test.mjs
+npm run mode
+npm run tunnel -- --dry-run; echo "exit $?"
+npm test
+```
+
+Expected:
+- **The tests:** `tests 10` and `pass 10` (after `ℹ` on Node 24, after `#` on Node 22). They use temporary folders and free ports, start no ngrok, and never touch the demo's own `.env` files.
+- **`npm run mode`:** `Mode: local (the LIFF mock and the verify mock).`
+- **`npm run tunnel -- --dry-run`** refuses, with `exit 1`. It reads the running `demo-app` (an answer from 127.0.0.1:3003, and a connection to 127.0.0.1:4545) and changes nothing:
+
+  ```
+  No tunnel. Fix these first:
+  - strapi/.env sets LINE_VERIFY_URL, so Strapi would trust the local mock's ID tokens. Run npm run mode:line, then restart Strapi.
+  - Set your LINE values in liff/.env: LINE_MODE_LIFF_ID: …; LINE_MODE_CHANNEL_ID: …; LINE_MODE_DOMAIN: ….
+  - Something answers on 127.0.0.1:4545, the LINE verify mock's port. Stop the app's dev server (npm run dev starts the mock); LINE mode runs npm run start:line.
+  - The app on http://127.0.0.1:3003 was built for the LIFF mock (X-Maison-Liff: mock). Stop it, and start it with npm run start:line.
+  ```
+
+  If Paul has already added his values (Step 8), the second line reads `Not in LINE mode: LINE_LOGIN_CHANNEL_ID (strapi/.env), MAISON_LIFF_URL (strapi/.env), PUBLIC_URL (strapi/.env), NEXT_PUBLIC_LIFF_MOCK (liff/.env), NEXT_PUBLIC_LIFF_ID (liff/.env), NEXT_PUBLIC_STRAPI_URL (liff/.env). Run npm run mode:line, then restart Strapi and the app.` instead.
+- **`npm test`:** the app's 39, Maison's 171, the `@strapi/utils` check, and the scripts' 10.
+
+- [ ] **Step 5: The setup script in LINE mode**
+
+This modifies Task 2's `strapi/scripts/maison-setup.mjs`. Replace:
+
+```js
+  if (!overview.lineSignIn?.configured) throw new Error('Set LINE_LOGIN_CHANNEL_ID in strapi/.env, then restart Strapi.');
+```
+
+with:
+
+```js
+  if (!overview.lineSignIn?.configured) throw new Error('Set LINE_LOGIN_CHANNEL_ID in strapi/.env, then restart Strapi.');
+  // npm run mode:line and npm run mode:local switch the channel in strapi/.env, and Strapi reads it when it starts.
+  if (overview.lineSignIn.channelId !== process.env.LINE_LOGIN_CHANNEL_ID) {
+    throw new Error('Strapi signs customers in with another LINE channel than strapi/.env names. Restart Strapi.');
+  }
+  const lineMode = process.env.LINE_LOGIN_CHANNEL_ID !== '1234567890';
+  console.log(lineMode ? 'LINE sign-in: your LINE Login channel (LINE mode).' : 'LINE sign-in: the LIFF mock (local mode).');
+```
+
+and replace:
+
+```js
+  writeEnv(join(root, 'liff', '.env'), { NEXT_PUBLIC_STRAPI_URL: STRAPI_URL, NEXT_PUBLIC_MAISON_CLIENT_ID: app.clientId });
+```
+
+with:
+
+```js
+  // In LINE mode the browser reaches Strapi through the app's own public origin, PUBLIC_URL, which proxies it.
+  writeEnv(join(root, 'liff', '.env'), {
+    NEXT_PUBLIC_STRAPI_URL: process.env.PUBLIC_URL || STRAPI_URL,
+    NEXT_PUBLIC_MAISON_CLIENT_ID: app.clientId,
+  });
+```
+
+```bash
+cd /Users/paul/work/maison-demo
+npm run setup
+```
+
+Expected, with `demo-strapi` running in local mode:
+
+```
+Setting up the Maison demo on http://localhost:1338.
+LINE sign-in: the LIFF mock (local mode).
+Demo catalog already loaded.
+Created the "Maison app" client … and wrote it to liff/.env (restart the app to pick it up).
+Wrote the "Maison ops" token to strapi/.tmp/maison-ops-token (README: "Claude Desktop, the ops agent").
+```
+
+Then ask the controller to restart `demo-app`, which reads the new client ID at start. Go on without waiting. The run also mints a new ops token, so Claude Desktop's config (Task 10, Step 2) is set after this task. Checked on 30 September against a stand-in for Strapi: with the channel switched in strapi/.env and Strapi not restarted, the script stops at `Setup failed: Strapi signs customers in with another LINE channel than strapi/.env names. Restart Strapi.` and changes nothing.
+
+- [ ] **Step 6: The channel icon, to LINE's MINI App icon spec**
+
+LINE's spec ([LINE MINI App icon specifications and guidelines](https://developers.line.biz/en/docs/line-mini-app/design/line-mini-app-icon/)):
+- a 130×130 px background
+- a logo of 54–90 px, 54–76 px recommended, designed as a stand-alone icon or wordmark
+- PNG or JPEG, without the LINE MINI App logo
+
+The channel icon also appears on the consent screen of Paul's LINE Login channel.
+
+`liff/scripts/render-channel-icon.mjs`:
+
+```js
+// Draws the Maison channel icon to LINE's MINI App icon spec
+// (https://developers.line.biz/en/docs/line-mini-app/design/line-mini-app-icon/): a 130×130 px PNG background with a
+// stand-alone logo, a gold "M" in the app's Cormorant Garamond, sized within LINE's recommended 54–76 px. Upload
+// line/channel-icon.png as the Channel icon of a LINE Login or LINE MINI App channel (Basic settings).
+// Run from liff/ after `npx playwright install chromium`: node scripts/render-channel-icon.mjs
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chromium } from '@playwright/test';
+
+const SIZE = 130; // LINE's background size (BG SIZE)
+const LOGO = 70; // the logo's longer side, in px
+const font = readFileSync(
+  new URL('../node_modules/@fontsource/cormorant-garamond/files/cormorant-garamond-latin-600-normal.woff2', import.meta.url)
+).toString('base64');
+
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage();
+  const { png, logo } = await page.evaluate(
+    async ({ font, SIZE, LOGO }) => {
+      const face = new FontFace('Cormorant Garamond', `url(data:font/woff2;base64,${font})`, { weight: '600' });
+      document.fonts.add(await face.load());
+      const canvas = Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE });
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1c1c1c'; // ink
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      // Size the font so the M's ink is LOGO px on its longer side, then center the ink rather than the em box.
+      ctx.font = '600 100px "Cormorant Garamond"';
+      const probe = ctx.measureText('M');
+      const probeSide = Math.max(
+        probe.actualBoundingBoxLeft + probe.actualBoundingBoxRight,
+        probe.actualBoundingBoxAscent + probe.actualBoundingBoxDescent
+      );
+      ctx.font = `600 ${(100 * LOGO) / probeSide}px "Cormorant Garamond"`;
+      const m = ctx.measureText('M');
+      const inkWidth = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+      const inkHeight = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+      ctx.fillStyle = '#b89b5e'; // gold
+      ctx.fillText('M', (SIZE - inkWidth) / 2 + m.actualBoundingBoxLeft, (SIZE - inkHeight) / 2 + m.actualBoundingBoxAscent);
+      // Measure what was drawn: the box around every pixel that isn't the background.
+      const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+      let [left, top, right, bottom] = [SIZE, SIZE, -1, -1];
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const i = (y * SIZE + x) * 4;
+          if (Math.abs(data[i] - 0x1c) + Math.abs(data[i + 1] - 0x1c) + Math.abs(data[i + 2] - 0x1c) > 24) {
+            [left, top, right, bottom] = [Math.min(left, x), Math.min(top, y), Math.max(right, x), Math.max(bottom, y)];
+          }
+        }
+      }
+      return {
+        png: canvas.toDataURL('image/png').split(',')[1],
+        logo: { width: right - left + 1, height: bottom - top + 1, left, top, right: SIZE - 1 - right, bottom: SIZE - 1 - bottom },
+      };
+    },
+    { font, SIZE, LOGO }
+  );
+  const outside = [logo.width, logo.height].some((side) => side < 54 || side > 76);
+  if (outside) throw new Error(`The logo is ${logo.width}×${logo.height} px; LINE recommends 54–76 px. Change LOGO.`);
+  mkdirSync('line', { recursive: true });
+  writeFileSync('line/channel-icon.png', Buffer.from(png, 'base64'));
+  console.log(
+    `Wrote line/channel-icon.png: ${SIZE}×${SIZE} px, logo ${logo.width}×${logo.height} px, margins ${logo.left}/${logo.top}/${logo.right}/${logo.bottom} px (LINE: 54–90 px, 54–76 recommended).`
+  );
+} finally {
+  await browser.close();
+}
+```
+
+```bash
+cd /Users/paul/work/maison-demo/liff
+node scripts/render-channel-icon.mjs
+file line/channel-icon.png
+```
+
+Expected:
+- `Wrote line/channel-icon.png: 130×130 px, logo 72×56 px, margins 29/36/29/38 px (LINE: 54–90 px, 54–76 recommended).` Another Chromium build may differ by a pixel. The script refuses a logo outside 54–76 px.
+- `line/channel-icon.png: PNG image data, 130 x 130, 8-bit/color RGBA, non-interlaced`
+- The icon is a gold serif M on ink. Open the PNG to look at it.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /Users/paul/work/maison-demo
+git add scripts/line-mode.mjs scripts/line-mode.test.mjs scripts/line-tunnel.mjs scripts/line-tunnel.test.mjs package.json \
+  liff/lib/strapi-proxy.ts liff/lib/strapi-proxy.test.ts liff/lib/tunnel.ts liff/lib/tunnel.test.ts liff/lib/liff.test.ts \
+  liff/lib/liff.ts liff/lib/session.ts liff/lib/mcp.ts liff/app/mcp liff/app/api/strapi-oauth-mcp-manager liff/app/uploads \
+  liff/app/concierge/page.tsx liff/next.config.mjs liff/package.json liff/.env.example \
+  liff/scripts/check-strapi-proxy.mjs liff/scripts/render-channel-icon.mjs liff/line/channel-icon.png \
+  strapi/scripts/maison-setup.mjs
+git diff --cached --name-only | grep -E '(^|/)\.env$|(^|/)node_modules/|(^|/)\.next/|(^|/)dist/|(^|/)\.tmp/|\.db$'; echo "(nothing above: no secrets, dependencies or build output)"
+node --env-file-if-exists=liff/.env --input-type=module -e "
+import { execSync } from 'node:child_process';
+const staged = execSync('git diff --cached', { encoding: 'utf8', maxBuffer: 1 << 28 });
+const values = ['LINE_MODE_LIFF_ID', 'LINE_MODE_CHANNEL_ID', 'LINE_MODE_DOMAIN'].map((key) => process.env[key]).filter(Boolean);
+console.log('LINE values in the staged diff:', values.filter((value) => staged.includes(value)).length);
+"
+git commit -m "feat: run the app inside LINE, through one tunnel" -m "The app proxies Strapi's /mcp, token endpoint and /uploads, so a phone needs only the app's origin and Strapi's admin stays local. npm run mode:line and mode:local switch the two .env files; npm run tunnel refuses while the verify mock or the LIFF mock could sign anyone in. LIFF signs in again the way LINE documents, and the channel icon follows LINE's MINI App spec." -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
+```
+
+Expected: nothing listed by the `grep`, `LINE values in the staged diff: 0` (it counts, and prints no value), and the commit.
+
+- [ ] **Step 8 (Paul): Your LINE Login channel and LIFF app**
+
+Nobody else signs in to the LINE Developers Console. Some of this may be done already: tick what is.
+1. Link your LINE Developers account (Business ID) to your LINE account, or LINE won't let you sign in to a channel in Developing.
+2. In the [LINE Developers Console](https://developers.line.biz/console/): a provider, and a LINE Login channel named, for example, Maison, with app type Web app. Leave it in **Developing**.
+3. **Basic settings → Channel icon:** upload `liff/line/channel-icon.png` (Step 6).
+4. **LIFF → Add:**
+   - LIFF app name: Maison, with no "LINE" in it
+   - Size: Full
+   - Endpoint URL: `https://<your ngrok domain>/`
+   - Scopes: `openid` and `profile`
+   - Add friend option: Off
+5. In `liff/.env`, in your editor, add three lines with your values:
+
+   ```
+   LINE_MODE_LIFF_ID=<the LIFF ID from the LIFF tab>
+   LINE_MODE_CHANNEL_ID=<the channel ID from Basic settings, digits only>
+   LINE_MODE_DOMAIN=<your ngrok domain, without https:// or a slash>
+   ```
+
+**Controller:** check them without printing them:
+
+```bash
+cd /Users/paul/work/maison-demo
+node --env-file=liff/.env -e "console.log(['LINE_MODE_LIFF_ID', 'LINE_MODE_CHANNEL_ID', 'LINE_MODE_DOMAIN'].map((key) => key + ': ' + (process.env[key] ? 'set' : 'missing')).join(', '))"
+```
+
+Expected: `LINE_MODE_LIFF_ID: set, LINE_MODE_CHANNEL_ID: set, LINE_MODE_DOMAIN: set`.
+
+- [ ] **Step 9 (Controller): Switch to LINE mode, and start the LINE build**
+
+```bash
+cd /Users/paul/work/maison-demo
+npm run mode:line
+```
+
+Expected:
+
+```
+LINE mode: strapi/.env and liff/.env now use LINE_MODE_LIFF_ID, LINE_MODE_CHANNEL_ID and LINE_MODE_DOMAIN (liff/.env).
+Next: restart Strapi, start the app with `npm run start:line` (not `npm run dev`), then `npm run tunnel`.
+```
+
+If it says `Not switched` instead, it names the key in `liff/.env` to fix (Step 8). A `Warning: LINE_MODE_LIFF_ID doesn't start with LINE_MODE_CHANNEL_ID …` means the two values come from different channels: ask Paul.
+
+Then:
+1. Restart `demo-strapi`. Strapi reads the channel when it starts, and doesn't restart on `.env` changes. `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:1338/_health` answers `204`.
+2. Run `npm run setup`. Expected: its usual lines, with `LINE sign-in: your LINE Login channel (LINE mode).` second.
+3. Stop `demo-app`. It holds 3003 and runs the verify mock.
+4. Add this configuration to `.claude/launch.json`, and start it. It builds for about a minute, then serves on 3003:
+
+   ```json
+   {
+     "name": "demo-app-line",
+     "runtimeExecutable": "/bin/bash",
+     "runtimeArgs": [
+       "-c",
+       "export PATH=/Users/paul/.nvm/versions/node/v24.16.0/bin:$PATH && cd /Users/paul/work/maison-demo/liff && exec npm run start:line"
+     ],
+     "port": 3003
+   }
+   ```
+
+5. Run `npm run mode`, and `lsof -nP -iTCP:3003 -sTCP:LISTEN`. Expected: `Mode: LINE (your LIFF app; LINE verifies ID tokens).`, and a `node` listener on `127.0.0.1:3003` only.
+6. Run `npm run tunnel -- --dry-run`. It needs the internet: it sends LINE a forged token. Expected:
+
+   ```
+   Safe to open: LINE verifies ID tokens, the app is built for LINE, and the verify mock is off.
+   Dry run: ngrok not started.
+   ```
+
+   Otherwise, fix what it names. It prints no value.
+
+The app's in-browser checks stop here: outside LINE, the LINE-mode build sends the browser to LINE Login, and only Paul signs in to LINE.
+
+- [ ] **Step 10 (Paul): Open the tunnel**
+
+Only Paul runs ngrok. It uses his account, and its config holds his authtoken, which nobody reads.
+
+```bash
+cd /Users/paul/work/maison-demo
+npm run tunnel
+```
+
+Expected:
+- `Safe to open: …`, then `Starting ngrok on LINE_MODE_DOMAIN (liff/.env) for the app on 127.0.0.1:3003. Ctrl-C stops it.`
+- ngrok's own screen: `Session Status  online`, and `Forwarding` from your domain to `http://127.0.0.1:3003`. That screen is the only place your domain is shown.
+
+Leave it running, and tell the controller.
+
+- [ ] **Step 11 (Controller): Check the public origin**
+
+Run this only after Paul has started the tunnel. It runs from the laptop, with a non-browser User-Agent, so ngrok's warning page doesn't apply. It prints no value:
+
+```bash
+cd /Users/paul/work/maison-demo
+UPLOAD=$(ls strapi/public/uploads | grep -vE '^\.' | head -1)
+node --env-file=liff/.env --input-type=module -e "
+const base = 'https://' + process.env.LINE_MODE_DOMAIN;
+const send = (path, init = {}) => fetch(base + path, { redirect: 'manual', ...init, headers: { 'User-Agent': 'maison-check/1.0', ...init.headers } });
+const home = await send('/');
+console.log('app', home.status, home.headers.get('x-maison-liff'));
+const forged = await send('/api/strapi-oauth-mcp-manager/oauth/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', client_id: process.env.NEXT_PUBLIC_MAISON_CLIENT_ID, subject_token: 'valid.U' + '0'.repeat(32), subject_token_type: 'urn:ietf:params:oauth:token-type:id_token' }),
+});
+console.log('forged ID token', forged.status, (await forged.json()).error);
+const mcp = await send('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: '{}' });
+console.log('mcp without a session', mcp.status, '| resource metadata on the public origin:', (mcp.headers.get('www-authenticate') ?? '').includes('resource_metadata=\"' + base + '/.well-known/'));
+const image = await send('/uploads/' + process.argv[1]);
+console.log('image', image.status, (image.headers.get('content-type') ?? '').split('/')[0]);
+for (const [method, path] of [['GET', '/admin'], ['GET', '/admin/init'], ['GET', '/_health'], ['GET', '/api/strapi-oauth-mcp-manager/oauth/authorize'], ['POST', '/api/strapi-oauth-mcp-manager/oauth/register'], ['GET', '/.well-known/oauth-authorization-server'], ['GET', '/content-manager/collection-types/plugin::maison.appointment']]) {
+  console.log(method, path, (await send(path, { method })).status);
+}
+" "$UPLOAD"
+```
+
+Expected:
+
+```
+app 200 line
+forged ID token 400 invalid_grant
+mcp without a session 401 | resource metadata on the public origin: true
+image 200 image
+GET /admin 404
+GET /admin/init 404
+GET /_health 404
+GET /api/strapi-oauth-mcp-manager/oauth/authorize 404
+POST /api/strapi-oauth-mcp-manager/oauth/register 404
+GET /.well-known/oauth-authorization-server 404
+GET /content-manager/collection-types/plugin::maison.appointment 404
+```
+
+The `true` shows that Strapi builds its public URLs on the app's origin. Maison's media URLs come from the same `server.url`.
+
+- [ ] **Step 12 (Paul): On your phone, inside LINE**
+
+1. In LINE, send yourself `https://liff.line.me/<your LIFF ID>`, in a chat or in Keep memo, and tap it.
+2. The first time only:
+   - ngrok's free plan may show "You are about to visit …": tap **Visit Site**. ngrok remembers it for 7 days. If the app then shows an error, close it and tap the link again.
+   - LINE asks you to allow Maison, with the channel's icon and name: allow it.
+3. Expected:
+   - LINE's loading icon, then the three collections, with images. LINE's header shows "Maison" and your domain.
+   - **Voyage → Weekender 50 → 来店を予約:** Ginza, next Saturday, 14:00. Send. "ご来店予約" lists the visit as "ブティックの確認待ち".
+   - **On the laptop,** in the Strapi admin (`http://localhost:1338/admin` → Maison, "All requests"): the request appears within 5 seconds, created via `app`, with your LINE user ID masked.
+   - **Landscape:** the app fills the screen, clear of the notch, with nothing cut off. Turn the phone back.
+   - **エージェントビュー** lists the tool calls.
+   - **A deep link:** close the app, and tap `https://liff.line.me/<your LIFF ID>/visits`. It opens on "ご来店予約": LIFF passes the path on, as the LINE confirmation's button will.
+4. **Optional, an hour later:** open the app again and browse. Expected: at most one reload, then the screens load. An ID token lasts an hour, and the app signs in again.
+5. Stop the tunnel with Ctrl-C, and tell the controller.
+
+- [ ] **Step 13 (Controller): Back to the stage setup**
+
+After Paul has stopped the tunnel:
+
+```bash
+cd /Users/paul/work/maison-demo
+npm run mode:local
+```
+
+Expected: `Local mode: strapi/.env and liff/.env use the LIFF mock and the local LINE verify mock again.` and the next-steps line. Then:
+1. Stop `demo-app-line`, restart `demo-strapi` (`_health` answers 204), and start `demo-app`.
+2. Run `npm run mode`. Expected: `Mode: local (the LIFF mock and the verify mock).`
+3. Run `npm run tunnel -- --dry-run; echo "exit $?"`. Expected: `exit 1`, after the four reasons in Step 4: the `LINE_VERIFY_URL` line, `Not in LINE mode: …`, the mock on 127.0.0.1:4545, and the app built for the LIFF mock. The guard refuses the stage setup.
+4. Run `npm test`. Expected: the app's 39, Maison's 171, the `@strapi/utils` check, and the scripts' 10.
+5. In the preview browser, `http://localhost:3003` signs in with the mock and shows the collections.
+
+Paul's LINE values stay in `liff/.env` for next time. `npm run mode:line` brings LINE mode back.
+
+---
+
+### Task 10: README, ops agent, rehearsal, backup video, and publishing the repo
 
 **Files:**
 - Modify: `README.md` (replaces Task 1's stub): the quick start for others, and the runbook
@@ -3691,8 +5724,9 @@ git commit -m "test(liff): add the browser and API tests"
   - `strapi/.tmp/maison-ops-token` (Task 2)
   - the tools `pending_confirmations` and `record_confirmation`, and the `send_pending_confirmations` prompt (Maison)
   - the Maison board
+  - LINE mode (Task 9): `npm run mode`, `mode:line`, `mode:local`, `start:line` and `tunnel`, and `liff/line/channel-icon.png`
 - Produces:
-  - the README: the quick start, the repo's layout, models, the runbook (setup, the 3-minute run, fallbacks, the backup video), options A and B, the QBurst handoff, tests, the Maison plugin's copy, and production notes
+  - the README: the quick start, the repo's layout, models, the runbook (setup, the 3-minute run, fallbacks, the backup video), options A and B (B is the app inside LINE), the QBurst handoff with "Run it as a LINE MINI App", tests, the Maison plugin's copy, and production notes
   - a rehearsed demo and a recorded backup
   - `PaulBratslavsky/maison-demo` on GitHub, public, when Paul says so
 
@@ -3702,6 +5736,8 @@ The flow on stage shows agents working with the same data through MCP, with a pe
 3. **The ops agent** in Claude Desktop runs `send_pending_confirmations`.
    - **Default:** it stops at the ready-made LINE message.
    - **Option A:** a real LINE message reaches Paul's phone.
+
+**Stop points:** the implementer's part is Steps 1, 6 and Step 7's commit. Steps 2–5 are Paul's (Claude Desktop, the checks in the admin, the rehearsal and the video), and publishing waits for him.
 
 - [ ] **Step 1: Write `README.md`**
 
@@ -3716,7 +5752,7 @@ A fictional luxury house whose catalog and appointments are served to people and
 - **The human gate:** staff confirm requests on the Maison board in the Strapi admin
 - **AX for operations:** an ops agent in Claude Desktop that prepares, and can send, the customer's LINE confirmation
 
-LINE sign-in is simulated with LINE's official LIFF mock and a local stand-in for LINE's ID token verify endpoint. Everything else is the production path. The demo was built for "Building the AI-Powered Connected Experience" (QBurst and LY Corporation, Tokyo, 7 October 2026), where QBurst presents the LINE MINI App side (see "Handoff").
+LINE sign-in is simulated with LINE's official LIFF mock and a local stand-in for LINE's ID token verify endpoint. Everything else is the production path. The same app also runs inside LINE on your own LIFF app, through one tunnel (option B, tested). It follows LINE's MINI App design guidelines, so QBurst can run it as a LINE MINI App. The demo was built for "Building the AI-Powered Connected Experience" (QBurst and LY Corporation, Tokyo, 7 October 2026), where QBurst presents the LINE MINI App side (see "Handoff").
 
 ## Quick start
 
@@ -3726,7 +5762,7 @@ You need Node.js 22.9 or later, and npm. For the concierge, either Ollama with `
 git clone https://github.com/PaulBratslavsky/maison-demo.git
 cd maison-demo
 npm install   # installs strapi/ and liff/, builds the Maison plugin, creates both .env files with fresh secrets
-npm run dev   # Strapi on :1338, the app on :3003, the LINE verify mock on 127.0.0.1:4545
+npm run dev   # Strapi on :1338, the app on :3003 and the LINE verify mock on :4545, all on 127.0.0.1
 ```
 
 The first start builds Strapi's admin, which takes a minute. Then, in a second terminal:
@@ -3739,7 +5775,7 @@ Stop `npm run dev` (Ctrl-C) and start it again, so the app picks up its OAuth cl
 - **The app:** http://localhost:3003. It signs in a demo customer with the LIFF mock.
 - **The Strapi admin:** http://localhost:1338/admin, then **Maison** for the requests board. Sign in with `DEMO_ADMIN_EMAIL` and `DEMO_ADMIN_PASSWORD`: open `strapi/.env` in your editor to read them. `npm install` generated the password for your copy, and nothing prints it.
 
-The ports are the demo's own, so it runs next to a Strapi on 1337. `npm run dev:strapi` and `npm run dev:app` start the two halves separately.
+The ports are the demo's own, so it runs next to a Strapi on 1337. `npm run dev:strapi` and `npm run dev:app` start the two halves separately. Everything listens on this machine only: to use the app from a phone, see option B.
 
 ## What's in the repo
 
@@ -3753,9 +5789,13 @@ The ports are the demo's own, so it runs next to a Strapi on 1337. `npm run dev:
 | `liff/` | The Maison app: Next.js 16, LIFF and the LIFF mock, the MCP SDK, and the concierge on AI SDK 7 |
 | `liff/scripts/mock-line-verify.mjs` | The local stand-in for LINE's verify endpoint |
 | `scripts/init-env.mjs` | Creates the two `.env` files on `npm install` |
+| `scripts/line-mode.mjs`, `scripts/line-tunnel.mjs` | Option B: `npm run mode:line` and `mode:local` switch both `.env` files, and `npm run tunnel` refuses an unsafe tunnel |
+| `liff/lib/strapi-proxy.ts` and its routes (`liff/app/mcp`, `liff/app/uploads`, `liff/app/api/strapi-oauth-mcp-manager`) | Option B: Strapi's `/mcp`, token endpoint and `/uploads` on the app's own origin |
+| `liff/line/channel-icon.png` | The channel icon, to LINE's MINI App icon spec |
+| `liff/public/line/LINE_spinner_light.svg` | LINE's loading icon: LINE's own file, from its MINI App design guidelines |
 
 Two things are set up on purpose:
-- **One Strapi version.** `strapi/package.json` holds eight `@strapi` packages at 5.55.1 with `overrides`. Without them, npm resolves Strapi's own `^5.0.0` peer ranges to a newer release, and a second copy of `@strapi/utils` turns plugins' 400s into 500s.
+- **One Strapi version.** `strapi/package.json` holds eight `@strapi` packages at 5.55.1 with `overrides`. Without them, npm resolves Strapi's own `^5.0.0` peer ranges to a newer release, and a second copy of `@strapi/utils` turns Maison's 400s into 500s. (oauth-mcp-manager 1.1.0 never loads `@strapi/utils`.)
 - **Maison shares Strapi's `@strapi/utils`.** Maison is a local plugin with its own dependencies, so its build would load its own copy. `strapi/scripts/share-strapi-utils.mjs` removes that copy after the build, on every `npm install` in `strapi/`, and `npm test` checks it.
 
 ## Models
@@ -3799,11 +5839,20 @@ The concierge uses a local model unless it has a key. Keys go in `liff/.env`; re
 
 ### Start over with a clean database
 
-1. Stop Strapi, and delete `strapi/.tmp/data.db`. To drop the catalog's uploaded images too: `find strapi/public/uploads -type f ! -name .gitkeep -delete`.
+1. Stop Strapi. Delete the database and the uploaded images together, keeping `.gitkeep`:
+
+   ```bash
+   rm -f strapi/.tmp/data.db
+   find strapi/public/uploads -type f ! -name .gitkeep -delete
+   ```
+
+   The catalog's images live in `strapi/public/uploads/`, and Maison's integration tests leave about 57 MB there per run. Delete uploads only together with the database: never by hand while the demo's data is loaded.
 2. Start Strapi, run `npm run setup`, restart the app, and update Claude Desktop (step 3).
 
 ### Before going on stage
 
+- [ ] The day before: start over with a clean database (above). Then no test customer, smoke-test token or rehearsal visit is left.
+- [ ] `npm run mode` says local. After option B, run `npm run mode:local` and restart.
 - [ ] Put the laptop on a phone hotspot. Only the concierge's model (with a key) and Claude Desktop need the internet.
 - [ ] `npm run dev`. `http://localhost:1338/_health` answers 204.
 - [ ] In the Strapi admin: **Maison** → **Reset demo appointments** (it asks first). Set the board's filter to **All requests**.
@@ -3864,9 +5913,9 @@ The concierge uses a local model unless it has a key. Keys go in `liff/.env`; re
 
 ## Option A: a real LINE message on your phone
 
-1. In LINE Developers, create a provider and an Official Account with the Messaging API. Check first that your account can create one from your region.
+1. In LINE Developers, create a provider and an Official Account with the Messaging API. Check first that your account can create one from your region. With option B, use your LINE Login channel's provider: LINE gives each user a different ID in each provider.
 2. Add the Official Account as a friend on your phone.
-3. Copy **Your user ID** from the Messaging API channel's Basic settings into `liff/.env` as `NEXT_PUBLIC_DEMO_LINE_USER_ID`. The mock sign-in then acts as you, as that provider sees you. Restart the app.
+3. Copy **Your user ID** from the Messaging API channel's Basic settings into `liff/.env` as `NEXT_PUBLIC_DEMO_LINE_USER_ID`. The mock sign-in then acts as you, as that provider sees you. Restart the app. With option B, skip this step: you sign in as yourself.
 4. Issue a channel access token, and add LINE Bot MCP to Claude Desktop:
 
    ```json
@@ -3884,7 +5933,7 @@ The concierge uses a local model unless it has a key. Keys go in `liff/.env`; re
 
    "My visits" then shows "確定 · LINEで送信済み", and the board shows LINE sent.
 
-The message's button opens `MAISON_LIFF_URL`, which only works from the phone if the app is public (option B).
+The message's button opens `MAISON_LIFF_URL`. In local mode that's `http://localhost:3003`, which your phone can't open. With option B it's your LIFF URL, which opens the app inside LINE.
 
 **Check once, in rehearsal, what LINE does for a customer it can't reach.** LINE's push API answers 200 even when it can't deliver, which is why the prompt calls `get_profile` first.
 1. Block the Official Account on your phone.
@@ -3897,14 +5946,71 @@ The message's button opens `MAISON_LIFF_URL`, which only works from the phone if
 
 ## Option B: the real app inside LINE
 
-1. Create a LINE Login channel under the same provider, with a LIFF app. Its endpoint is the app's public https URL, its scopes are `openid` and `profile`, and its size is `full`.
-2. Make Strapi reachable from the phone: Strapi Cloud or a tunnel. Set `PUBLIC_URL` and `MAISON_APP_ORIGIN` in `strapi/.env`.
-3. In `liff/.env`, set `NEXT_PUBLIC_LIFF_MOCK=false` and `NEXT_PUBLIC_LIFF_ID`.
-4. In `strapi/.env`, set these, then remove `LINE_VERIFY_URL`:
-   - `LINE_LOGIN_CHANNEL_ID` to the channel's ID (digits only)
-   - `MAISON_LIFF_URL=https://liff.line.me/<LIFF ID>`
+The stage runs on the LIFF mock. Option B runs the same app inside LINE on your phone, signed in by LINE: your own LINE Login channel and LIFF app, on one public https origin from ngrok. It was tested this way before the talk. The mock stays the default, and the stage's fallback.
 
-A **LINE MINI App** is the same app on a MINI App channel, which needs a Japan-registered organization or resident. The Official Account must be in the same provider; otherwise user IDs differ, and confirmations can't be delivered. A verified MINI App can send service messages instead of Official Account pushes.
+How it fits together:
+- **One origin.** ngrok forwards your domain to the app on :3003, a production build. The app passes three of Strapi's paths on to it: `/mcp`, the token endpoint (`/api/strapi-oauth-mcp-manager/oauth/token`) and `/uploads`. Strapi, with its admin, stays on your laptop. `MAISON_APP_ORIGIN` isn't needed, because the browser never calls Strapi on another origin.
+- **LINE verifies the ID tokens.** Strapi checks each one with LINE, for your channel, not with the local mock.
+- **Your values stay in `liff/.env`:** `LINE_MODE_LIFF_ID`, `LINE_MODE_CHANNEL_ID` and `LINE_MODE_DOMAIN`. The scripts never print them. Keep them out of commits.
+
+### Once: your LINE Login channel and LIFF app
+
+1. Link your LINE Developers account (Business ID) to your LINE account. Only a linked account can sign in to a channel in Developing.
+2. In the [LINE Developers Console](https://developers.line.biz/console/), create a provider and a LINE Login channel, with app type Web app. Name it Maison, for example: a channel's name can't contain "LINE". Leave it in **Developing**, so only its admins and testers can sign in.
+3. **Basic settings → Channel icon:** upload `liff/line/channel-icon.png`.
+4. **LIFF → Add:**
+   - Size: Full
+   - Endpoint URL: `https://<your ngrok domain>/`
+   - Scopes: `openid` and `profile`
+   - Add friend option: Off
+5. Get a free [ngrok](https://ngrok.com/download) account, install the agent, and add your authtoken (`ngrok config add-authtoken`). Your dev domain (`<name>.ngrok-free.dev`) is on ngrok's dashboard.
+6. Add three lines to `liff/.env`:
+
+   ```
+   LINE_MODE_LIFF_ID=<your LIFF ID, from the LIFF tab>
+   LINE_MODE_CHANNEL_ID=<your channel ID, digits only, from Basic settings>
+   LINE_MODE_DOMAIN=<your ngrok domain, without https://>
+   ```
+
+### Each time
+
+Stop `npm run dev` first. Then run these in order, the long-running ones each in its own terminal:
+
+```bash
+npm run mode:line     # rewrites strapi/.env and liff/.env for LINE mode, and prints no value
+npm run dev:strapi    # Strapi reads the LINE channel when it starts
+npm run setup         # checks Strapi's channel, and points the app at your domain
+npm run start:line    # builds the app for LINE and serves it on :3003, without the verify mock
+npm run tunnel        # checks it's safe, then runs ngrok on your domain
+```
+
+`npm run setup` mints a new ops token, so run the Claude Desktop step ("One-time setup", step 3) again afterwards.
+
+On your phone, in LINE, open `https://liff.line.me/<your LIFF ID>`: send it to yourself in a chat, or to Keep memo, and tap it.
+- **The first time,** ngrok's free plan may show its warning page: tap **Visit Site**. ngrok remembers it for 7 days. If the app then shows an error, close it and tap the link again.
+- **LINE asks you to allow the app,** with your channel's icon and name.
+- **The Strapi admin** stays at http://localhost:1338/admin on the laptop. Strapi prints your public URL as its own, but the admin isn't served there.
+
+`npm run tunnel` refuses unless all of these hold:
+- strapi/.env has no `LINE_VERIFY_URL`, and both `.env` files are in LINE mode
+- nothing answers on the verify mock's port, 127.0.0.1:4545. `npm run dev` starts the mock, which is why LINE mode uses `npm run start:line`.
+- the app on :3003 was built for LINE, not the LIFF mock
+- the running Strapi refuses a forged ID token through the app
+
+It refuses because, with the local verify mock behind a tunnel, anyone could sign in as any customer.
+
+`npm run tunnel -- --dry-run` runs the checks alone. ngrok runs with `--inspect=false`, so its local inspector keeps no copy of customers' tokens. In ngrok's dashboard, leave Traffic Inspector's full capture off.
+
+### Back to the stage setup
+
+Stop the tunnel and the app (Ctrl-C), then:
+
+```bash
+npm run mode:local
+npm run dev          # Strapi, the app and the verify mock, as on stage
+```
+
+`npm run mode` says which mode you're in. The tests (`npm run test:e2e`, `npm run test:live`) need local mode.
 
 ## Handoff: the integration slide, and what's ready for QBurst
 
@@ -3916,7 +6022,7 @@ A **LINE MINI App** is the same app on a MINI App channel, which needs a Japan-r
 
 **What's ready** (send this to QBurst before the event):
 
-- **This repo.** Clone it and run it (see "Quick start"). To try it inside LINE, follow option B with the MINI App channel's LIFF ID and channel ID.
+- **This repo.** Clone it and run it (see "Quick start"). Option B runs it inside LINE, and "Run it as a LINE MINI App" below runs it on your MINI App channel.
 - **Token endpoint:** `POST {STRAPI}/api/strapi-oauth-mcp-manager/oauth/token`, as a form:
 
   | Parameter | Value |
@@ -3937,13 +6043,54 @@ A **LINE MINI App** is the same app on a MINI App channel, which needs a Japan-r
 - **Confirmation:** `pending_confirmations` returns each upcoming, staff-confirmed visit with its LINE user ID and a flex message, ready for the Messaging API.
 - **Channels:** the MINI App channel and the Messaging API channel must be in one provider.
 
+### Run it as a LINE MINI App
+
+A LINE MINI App is a LIFF app on a LINE MINI App channel, so this app runs as one with its LIFF ID and channel ID changed. Under LINE's MINI App Policy, organizations with a Japanese corporate number can create one. The presenter, outside Japan, couldn't, so the demo was tested on a LINE Login channel (option B).
+
+In your provider, create both channels in the same provider. Otherwise user IDs won't match, and confirmations can't be delivered.
+1. **A LINE MINI App channel,** with Japan as its region:
+   - **Channel icon:** `liff/line/channel-icon.png`, drawn to LINE's icon spec: 130×130 px, with a logo between 54 and 76 px. `liff/scripts/render-channel-icon.mjs` redraws it.
+   - **Channel name:** Maison, with no "LINE" in it, and a Japanese name under Localization.
+   - **A description,** in English and Japanese, and your **privacy policy URL**.
+   - **Web app settings:** endpoint URL `https://<your host>/`, scopes `openid` and `profile`. A MINI App's size is always Full.
+2. **A Messaging API channel** (an Official Account), for LINE Bot MCP (option A). A verified MINI App can send service messages instead.
+
+Then, in this repo:
+- **Two values change.** Put the MINI App's LIFF ID and channel ID in `liff/.env` as `LINE_MODE_LIFF_ID` and `LINE_MODE_CHANNEL_ID`, put your host in `LINE_MODE_DOMAIN`, and follow option B. Nothing else changes. To serve it from your own https host instead of ngrok, run `npm run start:line` behind that host, and leave `npm run tunnel` out.
+- **Use one pair, from one internal channel.** A MINI App channel has three internal channels, Developing, Review and Published, and each has its own LIFF ID and channel ID. Use Developing's while you test. oauth-mcp-manager accepts one channel at a time, so switch to Published's at launch.
+- **Its URL.** An unverified MINI App opens at `https://miniapp.line.me/<LIFF ID>`. `https://liff.line.me/<LIFF ID>` opens it too, so the confirmations' links (`MAISON_LIFF_URL`) keep working. Its header shows the page's title, Maison, and your domain.
+
+Already done for LINE's MINI App guidelines:
+- **The icon:** as above.
+- **The safe area:** 34 px clear at the bottom in portrait, and 44 px at the sides and 21 px at the bottom in landscape, where the app fills the screen (`liff/app/globals.css`).
+- **The loading icon:** LINE's own spinner, 30×30 px and centered, wherever the app waits (`liff/components/spinner.tsx`).
+- **LIFF inside LINE:**
+  - `liff.init()` runs at or below the endpoint URL.
+  - `liff.login()` is called only outside LINE.
+  - When an ID token expires (they last an hour), the app logs out and reloads, LINE's own pattern.
+
+Still to do before LINE's review:
+- **People without LINE.** LINE asks that a MINI App work in an external browser without LINE Login. Every screen here needs a LINE session, so a public catalog session would come next.
+- **Performance.** LINE asks for a Lighthouse Performance score of 50 or more, measured on your deployment without LINE Login.
+- **The policy and the review request:**
+  - the LINE MINI App Policy
+  - the channel description, and the privacy policy
+  - for a reservation service, test scenarios in the review request
+
+LINE's pages behind this:
+- [Get started with LINE MINI App](https://developers.line.biz/en/docs/line-mini-app/quickstart/)
+- design: the [icon](https://developers.line.biz/en/docs/line-mini-app/design/line-mini-app-icon/), the [safe area](https://developers.line.biz/en/docs/line-mini-app/design/landscape/) and the [loading icon](https://developers.line.biz/en/docs/line-mini-app/design/loading-icon/)
+- [settings shown to users](https://developers.line.biz/en/docs/line-mini-app/develop/configure-console/), and the [console guide](https://developers.line.biz/en/docs/line-mini-app/discover/console-guide/)
+- [permanent links](https://developers.line.biz/en/docs/line-mini-app/develop/permanent-links/), and [external browsers](https://developers.line.biz/en/docs/line-mini-app/develop/external-browser/)
+- the [LINE MINI App Policy](https://terms2.line.me/LINE_MINI_App?lang=en)
+
 ## Tests
 
 | Command | What it runs | Needs |
 |---|---|---|
-| `npm test` | The app's unit tests, Maison's unit tests, and the `@strapi/utils` check | nothing running |
-| `npm run test:e2e` | Browser tests (booking, the closed-day guard, the agent view, an unknown product, two customers) and API tests (each customer's visits, the admin API hiding customers) | Strapi (Playwright starts the app if it isn't running) |
-| `npm run test:live` | The concierge on the local model, against the running Strapi | Strapi and Ollama; it's skipped otherwise |
+| `npm test` | The app's unit tests, Maison's unit tests, the `@strapi/utils` check, and the tests of option B's mode switch and tunnel guard | nothing running |
+| `npm run test:e2e` | Browser tests: booking, the closed-day guard, a cleared date, the agent view, an unknown product, two customers, and LINE's safe area in portrait and landscape. API tests: each customer's visits, and the admin API and its list search keeping customers out. It resets demo appointments first. | Strapi, in local mode (Playwright starts the app if it isn't running) |
+| `npm run test:live` | The concierge on the local model, against the running Strapi | Strapi and Ollama, in local mode; it's skipped otherwise |
 
 Maison's own suites run inside the demo too, from `strapi/src/plugins/maison`:
 - **Integration tests** boot the demo's Strapi in-process, on their own `strapi/.tmp/maison-test-*.db` files: `STRAPI_APP_DIR="$(cd ../../.. && pwd)" npm run test:integration`.
@@ -3954,26 +6101,51 @@ Maison's own suites run inside the demo too, from `strapi/src/plugins/maison`:
   npm run test:mcp
   ```
 
+  The script mints three tokens that never expire, one of them a staff token. Delete them afterwards, from the repo root:
+
+  ```bash
+  node --env-file=strapi/.env --input-type=module -e "
+  const base = 'http://localhost:1338';
+  const login = await (await fetch(base + '/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: process.env.DEMO_ADMIN_EMAIL, password: process.env.DEMO_ADMIN_PASSWORD }) })).json();
+  const api = (method, path) => fetch(base + path, { method, headers: { Authorization: 'Bearer ' + login.data.token } });
+  const smokeTokens = async () => (await (await api('GET', '/admin/admin-tokens')).json()).data.filter((token) => /^maison-(customer|staff|ops)-\d+$/.test(token.name));
+  const minted = await smokeTokens();
+  for (const token of minted) await api('DELETE', '/admin/admin-tokens/' + token.id);
+  console.log('smoke-test tokens deleted:', minted.length, '| left:', (await smokeTokens()).length);
+  "
+  rm -f strapi/src/plugins/maison/test/mcp/.tokens.json
+  ```
+
 ## The Maison plugin in this repo
 
 `strapi/src/plugins/maison` is [strapi-store-demo-mcp](https://github.com/PaulBratslavsky/strapi-store-demo-mcp) at `MAISON_COMMIT`, unchanged. That repo is the source of truth, so change Maison there first. What the demo changes about Maison lives outside the copy, in `strapi/src/extensions/maison/`.
 
-To bring in a newer version from a local clone of the plugin's repo:
+To bring in a newer version from a local clone of the plugin's repo, stop Strapi first (the install rebuilds Maison under it), then:
 
 ```bash
 SRC=../plugin-dev/plugins/strapi-store-demo-mcp   # your clone
+SHA=$(git -C "$SRC" rev-parse feat/maison-plugin)
+FILES=(admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore)
 rm -rf strapi/src/plugins/maison && mkdir strapi/src/plugins/maison
-git -C "$SRC" archive feat/maison-plugin -- admin server test scripts package.json package-lock.json README.md vitest.config.ts .gitignore .editorconfig .prettierrc .prettierignore | tar -x -C strapi/src/plugins/maison
+git -C "$SRC" archive "$SHA" -- "${FILES[@]}" | tar -x -C strapi/src/plugins/maison
 npm install --prefix strapi   # installs and builds it, and shares @strapi/utils
+git add strapi/src/plugins/maison
+diff <(git -C "$SRC" ls-tree -r "$SHA" -- "${FILES[@]}" | awk '{print $3, $4}' | sort -k2) \
+     <(git ls-files -s strapi/src/plugins/maison | awk '{sub("strapi/src/plugins/maison/", "", $4); print $2, $4}' | sort -k2) \
+  && echo "The staged copy matches $SHA"
 ```
 
-Then restart Strapi. To work on the plugin in place, run `npm run watch` in its folder, and restart Strapi to load each rebuild. If you run `npm install` in the plugin's folder, run `npm install --prefix strapi` afterwards.
+- **The check compares what git tracks,** blob by blob, with the plugin's commit, not the folder. `strapi/.gitignore`'s patterns apply inside the copy too, so a file on disk may not be tracked.
+- Commit with the SHA in the message, update `MAISON_COMMIT` above, and start Strapi.
+- To work on the plugin in place, run `npm run watch` in its folder, and restart Strapi to load each rebuild.
+- If you run `npm install` in the plugin's folder, stop Strapi and run `npm install --prefix strapi` afterwards. Until then, `npm run dev:strapi` refuses to start: the `predevelop` check finds Maison's own `@strapi/utils`.
 
 ## Production notes
 
 - **Staff** get an admin role with the Maison actions they need (`catalog.read`, `appointments.review`, `appointments.confirm`) instead of Super Admin.
 - **The customer token** belongs to a dedicated service admin with a narrow role. A token's permissions are clamped to its owner's, so a narrow owner can't be widened by mistake.
-- **Never set `LINE_VERIFY_URL`** in production. Set `PUBLIC_URL` and `MAISON_APP_ORIGIN`, and serve everything over https.
+- **Never set `LINE_VERIFY_URL`** in production. Serve everything over https, with `PUBLIC_URL` set to the public origin: the app's, when it passes Strapi's paths on as in option B. `MAISON_APP_ORIGIN` is only for an app that calls Strapi on another origin.
+- **Bind to 127.0.0.1** unless a proxy in front needs otherwise. The demo does it for Strapi, the app and the verify mock.
 - **Staff agents read what customers wrote.** `appointment_requests` gives a staff agent customers' notes, up to 500 characters each, which could try to instruct the model. The tool descriptions tell it to treat notes as information, and to confirm only a reference the staff member asked for. Keep `appointments.confirm` off an agent's token, or add an approval step for tools that write.
 - **`strapi/src/extensions/maison/strapi-server.ts`** keeps customers' LINE user IDs out of admin API responses and the list search. Keep it until Maison's own schema does the same.
 ````
@@ -3992,12 +6164,12 @@ Expected:
 - [ ] **Step 3: Checks carried over from the plugin reviews**
 
 - **(a) An appointment's `plugin::maison.appointment.customer`, on admin surfaces.** Task 8's API test checks that the Content Manager API never returns it. **Paul:** in the Content Manager, the Maison appointment list and edit view have no customer column or field, and searching the list for part of the demo customer's ID (`4af49806`) finds nothing. A save and a Publish there still work.
-- **(b) LINE and customers it can't reach:** run the check in the README's option A during the option A rehearsal. Push answers 200; `get_profile` fails for a blocked account or a non-friend.
+- **(b) Paul: LINE and customers it can't reach.** Run the check in the README's option A during the option A rehearsal. Push answers 200; `get_profile` fails for a blocked account or a non-friend.
 - **(c) Paul's visual checks in the admin:**
   - **The board.** A request made in the app appears within 5 seconds. "All requests" keeps confirmed rows. **Confirm** appears only on waiting requests whose visit is ahead. The LINE badge changes after option A.
   - **The reset dialog.** "Reset demo appointments" asks first, and Cancel changes nothing.
 
-- [ ] **Step 4: Rehearse the run**
+- [ ] **Step 4 (Paul): Rehearse the run**
 
 Follow "Before going on stage" and "The 3-minute run" in the README three times in the stage mode, resetting demo appointments between runs. Do one more run on the local model.
 
@@ -4006,48 +6178,82 @@ Expected:
 - **The concierge** never says a visit is confirmed.
 - **The Book button fallback** works with the network off. Strapi, the app and the mock all run locally, and so does the local model. Only Claude Desktop stops.
 
-- [ ] **Step 5: Record the backup video**
+- [ ] **Step 5 (Paul): Record the backup video**
 
 Follow "Record the backup video" in the README once a rehearsal is clean.
 
 - [ ] **Step 6: Check a fresh clone**
 
-This checks the quick start's install on a clean copy. It starts no server: `demo-strapi` and `demo-app` hold the demo's ports.
+This checks the quick start's install on a clean copy of `feat/maison-demo` (after the merge, `main` does as well): on this laptop's Node 24, then on Node 22.12, the oldest Node 22 here (`engines` asks for 22.9 or later). It starts no long-running server: `demo-strapi` and `demo-app` hold the demo's ports.
 
 ```bash
 CLONE="$(mktemp -d)/maison-demo"
-git clone -q /Users/paul/work/maison-demo "$CLONE"
+git clone -q -b feat/maison-demo /Users/paul/work/maison-demo "$CLONE"
 cd "$CLONE" && npm install > "$CLONE.install.log" 2>&1; echo "install exit $?"
 grep -E 'Created|Generated|share Strapi' "$CLONE.install.log"
 stat -f '%Lp %N' strapi/.env liff/.env
 npm test > "$CLONE.test.log" 2>&1; echo "test exit $?"
 git status --short; echo "(nothing above: the install left the clone clean)"
 cd /Users/paul/work/maison-demo && rm -rf "$(dirname "$CLONE")"
+
+NODE22=/Users/paul/.nvm/versions/node/v22.12.0/bin
+CLONE="$(mktemp -d)/maison-demo"
+git clone -q -b feat/maison-demo /Users/paul/work/maison-demo "$CLONE"
+cd "$CLONE" && PATH="$NODE22:$PATH" && node --version && npm --version
+npm install > "$CLONE.install.log" 2>&1; echo "install exit $?"
+npm test > "$CLONE.test.log" 2>&1; echo "test exit $?"
+cd /Users/paul/work/maison-demo && rm -rf "$(dirname "$CLONE")"
 ```
 
 Expected:
-- `install exit 0`, then "Maison and oauth-mcp-manager share Strapi core's @strapi/utils.", "Created strapi/.env …", the generated keys, and "Created liff/.env …". No value is printed.
-- `600` for both `.env` files, and `test exit 0`.
-- Nothing from `git status`: everything the install made is ignored.
+- **Node 24:**
+  - `install exit 0`, then "Maison and oauth-mcp-manager share Strapi core's @strapi/utils.", "Created strapi/.env …", the generated keys, and "Created liff/.env …". No value is printed.
+  - `600` for both `.env` files, and `test exit 0`.
+  - Nothing from `git status`: everything the install made is ignored.
+- **Node 22:** `v22.12.0` and `10.9.0`, then `install exit 0` and `test exit 0`. npm 10 may rewrite lockfiles in that clone, which is thrown away. The new root tests passed on Node 22.12 on 30 September.
 
 - [ ] **Step 7: Commit; publishing waits for Paul**
 
 ```bash
 cd /Users/paul/work/maison-demo
 git add README.md
-git commit -m "docs: add the README: quick start, runbook and the QBurst handoff"
+git commit -m "docs: add the README: quick start, runbook and the QBurst handoff" -m "Co-Authored-By: <your model> <noreply@anthropic.com>"
 ```
 
-Only when Paul says so, and after he has chosen a license (the repo has none yet):
+Only when Paul says so, and after he has chosen a license (the repo has none yet). From `feat/maison-demo`:
 
 ```bash
 cd /Users/paul/work/maison-demo
 git ls-files | grep -E '(^|/)\.env$|maison-ops-token|\.tokens\.json|\.db$'; echo "(nothing above: no secret file is tracked)"
-git log -p | grep -E 'sk-ant-|mcp_at_[A-Za-z0-9_-]{20,}'; echo "(nothing above: no key or session token in the history)"
-gh repo create PaulBratslavsky/maison-demo --public --source . --remote origin --description "From UX to AX: one set of Strapi MCP tools serving a LINE app, a customer's agent and an ops agent" --push
+git log -p | grep -cE 'sk-ant-[A-Za-z0-9_-]{20,}|mcp_at_[A-Za-z0-9_-]{20,}'
+node --env-file-if-exists=liff/.env --input-type=module -e "
+import { execSync } from 'node:child_process';
+const history = execSync('git log -p', { encoding: 'utf8', maxBuffer: 1 << 30 });
+const values = ['LINE_MODE_LIFF_ID', 'LINE_MODE_CHANNEL_ID', 'LINE_MODE_DOMAIN'].map((key) => process.env[key]).filter(Boolean);
+console.log('LINE values in the history:', values.filter((value) => history.includes(value)).length);
+"
+gh repo create PaulBratslavsky/maison-demo --public --source . --remote origin --description "From UX to AX: one set of Strapi MCP tools serving a LINE app, a customer's agent and an ops agent"
+git push -u origin main
+git push -u origin feat/maison-demo
+gh pr create --base main --head feat/maison-demo --title "The Maison demo: from UX to AX" --body "$(cat <<'EOF'
+The whole demo on one laptop: Strapi 5.55.1 with the Maison plugin and oauth-mcp-manager, the Maison app (LINE's LIFF mock on stage, and a tested LINE mode through one tunnel), the concierge, the ops agent's setup, and the runbook. README.md has the quick start, the runbook and the handoff to QBurst.
+
+- Tests: `npm test`, `npm run test:e2e`, the concierge's live test, and Maison's own suites (README, "Tests").
+- Checked before publishing: no secret file is tracked, and the history holds no key, no session token and none of the LINE values.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
 ```
 
-Expected: nothing from either `grep`, and `gh` prints the new repository's URL. `git status -sb` then shows `main...origin/main`.
+`main` goes first, so GitHub makes it the default branch.
+
+Expected:
+- nothing from the first `grep`
+- `0` from the second. It counts and never prints a match, and Task 7's fixture `sk-ant-test` is too short to count.
+- `LINE values in the history: 0`: Paul's LIFF ID, channel ID and ngrok domain were never committed
+- `gh repo create` prints the new repository's URL, the pushes create `main` and `feat/maison-demo`, and `gh pr create` prints the PR's URL
+- `git status -sb` shows `feat/maison-demo...origin/feat/maison-demo`. The PR waits for Paul: merging is his call.
 
 ---
 
@@ -4093,6 +6299,40 @@ It ran in a scratch copy of the repo. Nothing touched LaunchPad's tree, the runn
 - the credential mapping for Maison's token script, which reached its network step with the demo admin
 
 **Not run here:** `strapi develop` and `next dev` on their ports, the browser, Playwright, the concierge's live test, and the Maison MCP smoke tests. They need the controller's servers (Tasks 1, 3 and 5–8). strapi-oauth-mcp-manager 1.1.0 from npm couldn't be installed, because it isn't published yet.
+
+### The LINE amendment (Tasks 3 and 5–10)
+
+It ran in a scratch Next 16.3.8 app (React 19.3, Tailwind 3.4.19, vitest 3.2.7, Playwright 1.63 with a cached Chromium) and a scratch repo root, on free ports.
+- **What it left alone:** the controller's servers, LaunchPad, the plugin repos and `maison-demo`. No tunnel was started, nothing was installed globally, and no `.env` or ngrok config was read.
+- **LINE's pages:** read on 30 September (each cited where it's used). LINE's two spinner files were checked by HEAD request only: 712 bytes each.
+
+**The app's side:**
+- **Task 9's new tests:** the proxy's 5, the header's 2 and LIFF's 2 passed with Task 4's 14 (23 in all), and `tsc` passed.
+- **Red first:**
+  - the new suites failed to load before their modules existed
+  - "signs in again" failed against Task 4's `signInAgain`
+  - a proxy that buffers failed the streaming test in 2 s, with "the first event was held back"
+- **`check-strapi-proxy.mjs` passed against `next start -H 127.0.0.1`:** the first event at 17–18 ms, then the token endpoint's 503 and `Retry-After`, the image, and 404 for everything else, with the stand-in for Strapi never reached.
+- **Rewrites against route handlers,** with `next start` and gzip accepted:
+  - through an external rewrite: one chunk, at 1509 ms
+  - through a route handler: 19 ms, then 1517 ms
+- **`next.config.mjs` sees `liff/.env` at build time:** the build answered `X-Maison-Liff: line` with `NEXT_PUBLIC_LIFF_MOCK=false`. The three routes build as dynamic, with no route config.
+- **The safe area,** in Chromium with Playwright's emulation:
+  - the stage laptop (1280×900): the 375×812 frame, with no padding
+  - a desktop context of 390×844, and a phone in portrait (`isMobile`, `hasTouch`): 34 px at the bottom
+  - a phone in landscape (844×390): the full width, with 44/44/21 px, and the fixed drawer padded the same way
+- **The channel icon:** 130×130 px, with a 72×56 px logo.
+
+**The root's side:**
+- **The mode switch and the guard:** 10 of 10 `node:test` tests on Node 24.16 and on Node 22.12, and the exact messages quoted in Task 9.
+- **The setup script's change,** against a stand-in for Strapi: local mode, LINE mode, and a refusal when Strapi still runs the other channel.
+- **The README's re-copy check** matched a faithful copy of Maison (133 tracked files, `dist/` ignored), and flagged a changed file.
+
+**Not run here:**
+- Paul's channel and LIFF app, the tunnel, and the phone
+- `npm run setup` against the real Strapi, and `npm run tunnel` against the running demo
+- Task 8's new browser and API tests, which need the demo's Strapi
+- whether LINE's in-app browser keeps ngrok's cookie, and the sign-in again after an hour on a device (Task 9, Step 12)
 
 ### Earlier, in LaunchPad
 

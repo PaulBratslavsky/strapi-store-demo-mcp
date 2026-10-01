@@ -1,6 +1,6 @@
 # The maison-demo repo, the Maison app and the demo: design
 
-- **Date:** 2026-09-29, revised the same day; amended 2026-09-30, and moved to its own repo the same day
+- **Date:** 2026-09-29, revised the same day; amended 2026-09-30, moved to its own repo the same day, and amended again for LINE
 - **Status:** Draft for review
 - **Overview:** [AX luxury demo overview](2026-09-29-ax-luxury-demo-overview.md)
 - **Target repo:** `maison-demo`, a new standalone repo at `/Users/paul/work/maison-demo`, with a Strapi app (`strapi/`) and the Maison app (`liff/`). It becomes public on GitHub as PaulBratslavsky/maison-demo when Paul says so. (This file keeps its old name, from when LaunchPad hosted the demo.)
@@ -28,6 +28,22 @@
 > - **npm everywhere.** `git clone`, `npm install`, `npm run dev` and `npm run setup` run it (Part A).
 > - **No in-admin chat.** Paul dropped strapi-plugin-tanstack-ai: the demo's story is customers' agents working with the store's data over Strapi MCP, with LINE as the identity and messaging channel. Staff confirm on the Maison board (Part D).
 > - **The runbook is the repo's README** (Part E).
+
+> **Amendment (30 September, later): MINI App-ready, and the real app inside LINE.** Paul asked to finish the integration as a LINE MINI App. LINE's MINI App Policy (effective 19 February 2026) lets only these create a MINI App channel, so he can't:
+> - individuals in Japan, Taiwan or Thailand
+> - organizations with a Japanese corporate number, or a Taiwanese or Thai tax ID
+>
+> A MINI App is a LIFF app on a MINI App channel, so:
+> - **LINE's MINI App design guidelines are in the app** (Part B):
+>   - a channel icon to LINE's spec
+>   - LINE's safe area in portrait and landscape, with the stage frame only on a wide screen with a mouse
+>   - LINE's loading icon
+> - **The real app inside LINE is a tested path,** "LINE mode" (Part C):
+>   - Paul's LINE Login channel and LIFF app, on one ngrok origin
+>   - the app proxies Strapi's `/mcp`, token endpoint and `/uploads`, so Strapi's admin stays on the laptop
+>   - one command switches between local and LINE mode, and the tunnel refuses to open while a mock could sign anyone in
+> - **Strapi, the app and the verify mock listen on 127.0.0.1 only.** Phones come in through the tunnel.
+> - **The handoff** (Part F) tells QBurst how to run it as a LINE MINI App on their own channel. Only the LIFF ID and the channel ID change.
 
 ## Part A: The repo and its Strapi
 
@@ -69,7 +85,7 @@
 
 | File | Change |
 |---|---|
-| `config/server.ts` | Port 1338 by default. `url`: `PUBLIC_URL`, or `http://localhost:<port>` without it, so Maison's media URLs are absolute for the app's origin. `mcp: { enabled: env.bool('MCP_ENABLED', true) }`. |
+| `config/server.ts` | Port 1338 and host 127.0.0.1 by default. `url`: `PUBLIC_URL`, or `http://localhost:<port>` without it, so Maison's media URLs are absolute for the app's origin. In LINE mode `PUBLIC_URL` is the tunnel's https origin. `mcp: { enabled: env.bool('MCP_ENABLED', true) }`. |
 | `config/admin.ts` | Unchanged. The 5.55.1 template already sets `secrets.encryptionKey` from `ENCRYPTION_KEY`, which oauth-mcp-manager needs to decrypt admin tokens. |
 | `config/plugins.ts` | `maison` (local) and `strapi-oauth-mcp-manager`. The template's entries stay. The values are in the table below. |
 | `config/middlewares.ts` | The CORS object below. |
@@ -137,7 +153,9 @@ The demo adds a plugin extension, as defense in depth:
 
 ### Hosting
 
-None for the stage. Strapi, the app and the mock verify endpoint all run on the laptop. The concierge needs the internet unless it uses the local model, and Claude Desktop always does.
+None for the stage. Strapi, the app and the mock verify endpoint all run on the laptop, listening on 127.0.0.1 only. The concierge needs the internet unless it uses the local model, and Claude Desktop always does.
+
+LINE mode (Part C) adds one public origin: an ngrok tunnel to the app on this machine. The app passes three of Strapi's paths on to it, and nothing else of Strapi's is public.
 
 ### Dev servers while it's built
 
@@ -167,7 +185,9 @@ The repo's second app, next to `strapi/`:
   - `getIDToken` returns `valid.<demo LINE user ID>`.
   - `getAppLanguage` returns `NEXT_PUBLIC_DEMO_LOCALE`.
   - The demo user ID comes from `NEXT_PUBLIC_DEMO_LINE_USER_ID`, or from `?demoUser=U…` for the current tab. The override is only for tests and the second-customer check.
-- **Real** (`NEXT_PUBLIC_LIFF_MOCK=false`, with `NEXT_PUBLIC_LIFF_ID` set). The app must be served over https at the LIFF app's endpoint URL (Part C).
+- **Real, "LINE mode"** (`NEXT_PUBLIC_LIFF_MOCK=false`, with `NEXT_PUBLIC_LIFF_ID` set). The app runs as a production build at the LIFF app's https endpoint URL, behind one ngrok origin (Part C).
+  - The browser reaches Strapi's `/mcp`, token endpoint and `/uploads` on the app's own origin, through three route handlers that stream Strapi's answers as they come.
+  - On those same-origin calls, the app sends `ngrok-skip-browser-warning`, so ngrok's free-plan warning page doesn't replace an answer.
 
 ### Session (`lib/session.ts`)
 
@@ -177,7 +197,11 @@ The repo's second app, next to `strapi/`:
 4. On a `401` from `/mcp`, exchange again, once. Calls that get their 401 together share that one exchange and reconnect.
 5. Handle the token endpoint's two errors differently:
    - **`temporarily_unavailable` (503):** LINE couldn't be reached, answered 408 or 429, or the LINE client needs an admin. Wait for `Retry-After` (at most 10 seconds) and try once more. Then say "try again in a moment", with a retry button.
-   - **`invalid_grant` (400):** LINE refused the ID token. Never retry it. Inside LINE, log out and start a new LINE login. With the mock, show the error: it means the app and Strapi disagree about the channel.
+   - **`invalid_grant` (400):** LINE refused the ID token. Never retry it.
+     - Inside LINE, log out and reload: `liff.init()` signs in again by itself, and `liff.login()` can't be used in the LIFF browser.
+     - It reloads at most once a minute. A second refusal means the app and Strapi disagree about the channel, and the screen shows the error.
+     - An ID token lasts an hour.
+     - With the mock, show the error: it means the app and Strapi disagree about the channel.
 
 ### MCP client (`lib/mcp.ts`)
 
@@ -243,7 +267,14 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
 ### Look and feel
 
 - **Style:** restrained luxury: off-white or charcoal, a serif wordmark, generous spacing, and full-bleed product imagery.
-- **Layout:** mobile-first at 375 px, with the phone frame above 500 px.
+- **Layout:** mobile-first at 375 px.
+  - The phone frame appears only on a screen 500 px or wider with a mouse or trackpad: the stage laptop.
+  - Phones fill the screen in portrait and in landscape.
+- **LINE's MINI App design guidelines:**
+  - **The channel icon:** 130×130 px, with a logo between 54 and 76 px (a gold M), drawn by a script from the app's font.
+  - **The safe area:** 34 px clear at the bottom in portrait; 44 px at the sides and 21 px at the bottom in landscape. The page and every fixed or sticky bar pad with it.
+  - **The loading icon:** LINE's own 30×30 spinner, centered, wherever the app waits. Its file is LINE's, downloaded with Paul's OK.
+  - **The title:** the page's `<title>`, "Maison", which LINE's header shows.
 - **Accessibility:** tap targets of 44 px or more, alt text from the product images' alternative text, and the phone's text-size setting respected.
 
 ### Testing
@@ -265,6 +296,15 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
   - over MCP, each customer's `my_appointments` lists only their own visits
   - the admin API never returns an appointment's `customer`
 - **A live test on the local model,** opt-in, skipped when Ollama isn't up: the concierge answers the demo question through the catalog tools. Every product it names must have come back from a tool call, and one must fit the question.
+- **More browser and API tests:**
+  - a cleared date asks for one, and neither it nor a closed day sends a request
+  - LINE's safe area on a phone in portrait and in landscape, without the stage frame
+  - the Content Manager's list search never matches a customer's LINE user ID, and the appointment's main field is its reference
+- **LINE mode:**
+  - the proxy's unit tests, including one that fails a proxy that buffers, and an end-to-end check through `next start`
+  - the ngrok header, and LIFF's sign-in again
+  - `node:test` suites for the mode switch and the tunnel guard
+  - the controller's check of the public origin, and Paul's run on his phone
 - **Maison's own tests, inside the demo:**
   - its unit tests, in the root `npm test`
   - its integration tests, against the demo's Strapi, including one that its validation errors are Strapi's own
@@ -282,14 +322,29 @@ Rules 2 and 7 came from running the local model. Without them, Qwen3 guessed cat
   The message's button opens `MAISON_LIFF_URL`, which only works from the phone if the app is public (option B). The message itself still arrives.
 
   **Rehearsal check:** block the Official Account and run the ops beat. LINE's push API answers 200 even then, but `get_profile` fails, so the agent records "failed" and pushes nothing. Unblock the account and run it again.
-- **Option B, the real app in LINE:**
-  1. Create a LINE Login channel under the same provider, with a LIFF app. Its endpoint is the app's public https URL, its scopes are `openid` and `profile`, and its size is `full`.
-  2. Make Strapi public: Strapi Cloud or a tunnel, with `PUBLIC_URL` and `MAISON_APP_ORIGIN` set.
-  3. Set `NEXT_PUBLIC_LIFF_MOCK=false`, `NEXT_PUBLIC_LIFF_ID`, `LINE_LOGIN_CHANNEL_ID` (the channel's ID, digits only), and `MAISON_LIFF_URL=https://liff.line.me/<LIFF ID>`. Remove `LINE_VERIFY_URL`.
+- **Option B, the real app in LINE ("LINE mode", tested before the talk):**
+  1. **Paul's LINE Login channel,** left in Developing so only its admins and testers can sign in, with:
+     - a LIFF app: endpoint `https://<your ngrok domain>/`, scopes `openid` and `profile`, size `Full`
+     - the channel icon above
+  2. **One public origin:** ngrok's dev domain, to the app's production build on 127.0.0.1:3003. The app passes Strapi's `/mcp`, token endpoint and `/uploads` on to `http://localhost:1338`. `PUBLIC_URL` is the public origin, so Strapi's media URLs and OAuth metadata point there. The admin stays at `http://localhost:1338/admin`.
+  3. **The switch:** `npm run mode:line` and `npm run mode:local` rewrite the two `.env` files from three values in `liff/.env`: the LIFF ID, the channel ID and the domain. These values never go in a commit.
+     - In LINE mode they set Paul's channel ID, no `LINE_VERIFY_URL`, `MAISON_LIFF_URL=https://liff.line.me/<LIFF ID>`, the LIFF mock off and the LIFF ID.
+     - The OAuth client holds no channel. Strapi reads it at start, and the setup script checks that the running Strapi has it.
+  4. **`npm run tunnel` refuses** while any of these holds. Behind a tunnel, the mock would let anyone sign in as any customer.
+     - strapi/.env sets `LINE_VERIFY_URL`
+     - the app is built for the LIFF mock
+     - the verify mock's port answers
+     - the running Strapi accepts a forged ID token
 - **MINI App (QBurst):**
-  - A MINI App is a LIFF app on a MINI App channel: same code, with that channel's LIFF ID and channel ID.
+  - A MINI App is a LIFF app on a MINI App channel: same code, with that channel's LIFF ID and channel ID in `liff/.env`, then option B.
+  - The MINI App's internal channels (Developing, Review and Published) each have their own LIFF ID and channel ID. Use one pair, Developing's while testing. oauth-mcp-manager accepts one channel at a time.
+  - An unverified MINI App opens at `https://miniapp.line.me/<LIFF ID>`, and `https://liff.line.me/<LIFF ID>` opens it too.
   - The Official Account must be in the same provider. Otherwise user IDs differ, and confirmations can't be delivered.
   - A *verified* MINI App can send service messages instead of Official Account pushes.
+  - **Still to do for LINE's review:**
+    - the service for people without LINE, in an external browser
+    - a Lighthouse Performance score of 50 or more
+    - the privacy policy and the channel description
 
 ## Part D: Staff and the ops agent
 
@@ -388,5 +443,6 @@ Recorded after the final rehearsal passes:
    - the tool list (customer and staff tools) and its error codes
    - the confirmation's flex message
    - the channel requirements: the MINI App and the Official Account in one provider, and one active LINE client per Strapi
+   - how to run it as a LINE MINI App: the channel's settings, which values change, and LINE's design guidelines already applied, with what's left before LINE's review
 
    This is the list to send QBurst before the event.

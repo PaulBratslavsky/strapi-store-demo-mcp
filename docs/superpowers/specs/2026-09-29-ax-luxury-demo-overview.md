@@ -1,7 +1,10 @@
 # AX luxury demo: overview
 
 - **Date:** 2026-09-29
-- **Status:** Revised 2026-09-29: the stage demo runs without LINE channels, and QBurst presents the MINI App side. Amended 2026-09-30 for the plugins as built: staff confirm on the Maison board, and a local model stands in for the concierge when there's no API key. Moved the same day to a standalone repo, maison-demo, without an in-admin chat.
+- **Status:** Revised 2026-09-29: the stage demo runs without LINE channels, and QBurst presents the MINI App side. Amended 2026-09-30 for the plugins as built: staff confirm on the Maison board, and a local model stands in for the concierge when there's no API key. Moved the same day to a standalone repo, maison-demo, without an in-admin chat. Amended again the same day:
+  - the app is LINE MINI App-ready
+  - the real app inside LINE is a tested path ("LINE mode", through one tunnel)
+  - QBurst's handoff runs it as a MINI App
 - **Talk:** "Content Infrastructure for the AI Era: Building Experiences for Humans and AI"
 - **Event:** "Building the AI-Powered Connected Experience" by QBurst with LY Corporation. **7 October 2026**, LY Corporation office, Akasaka Trust Tower, Tokyo. Invitation-only, for senior CX, marketing and product leaders. The event's themes include "MINI App integrations with AI-enabled tools and content management systems". LY Corporation's talk covers LINE MINI App and Agent i, and the panel includes LVMH Japan's IT Digital Director.
 - **Slot:** 6:00–6:15 PM JST (15 minutes) with a 3-minute demo
@@ -55,16 +58,17 @@ The demo maps to the brief's six AX needs:
 | Brand | A fictional luxury house in the style of Louis Vuitton (trunks, leather goods, monogram personalization). Name to be decided; "Maison" is the placeholder. | A real brand's name, products and photos are trademark and copyright trouble on stage and in a public repo. |
 | Language | Japanese (default) and English content, prices in whole yen | Japanese audience and LINE users |
 | Talk focus | From UX to AX: the same tools serve screens, a customer's agent and a staff agent. QBurst presents the MINI App side afterwards. | The user's call. It splits the stage cleanly: content infrastructure here, the LINE channel with QBurst. |
-| Customer app | Catalog plus AI concierge, built as a LIFF app so it's MINI App–ready. Shown on stage in a browser at phone size. | People and an agent use the same content in one app. The same code runs inside LINE once it has a LIFF ID. |
+| Customer app | Catalog plus AI concierge, built as a LIFF app that follows LINE's MINI App design guidelines (channel icon, safe area, loading icon). Shown on stage in a browser at phone size. | People and an agent use the same content in one app. The same code runs inside LINE, and LINE mode tests it there. |
 | Demo story | Concierge with a human gate: draft, staff confirm on the Maison board, LINE delivery by an ops agent. No in-admin chat. | Shows UX, AX, permissions, the human gate and delivery in one flow. The story is customers' agents working with the store's data, with LINE as identity and messaging (the user's call, 30 September). |
 | Models | Claude Sonnet 5 with an API key; without one, a local model (`qwen3-14b-32k` on Ollama) for the concierge | Rehearsal needs no key, and the local model is an offline fallback. Claude Desktop, the ops agent, still needs the internet. |
 | Data access | Everything goes through Strapi's built-in MCP server, catalog screens included | The talk's point: the tools are the interface for both kinds of consumer |
 | No second MCP server | Extend Strapi's MCP with custom tools; the phone speaks MCP to Strapi's `/mcp` directly | Official extension points only |
 | Customer identity | New LINE token exchange in `strapi-oauth-mcp-manager` 1.1. Tools ask its `resolveSubject(authorization)` which LINE user holds the caller's session token. | Reuses the existing OAuth-for-MCP plugin and keeps identity out of the model's hands. Headers set by a middleware never reach tools (the MCP transport reads raw headers), so no identity header is used. |
 | Packaging | Two plugins: Maison (domain) and oauth-mcp-manager (identity). A repo of its own, maison-demo, hosts them: Maison as a local plugin in its Strapi app, oauth-mcp-manager from npm. | Portable to any Strapi app; each plugin extends independently. A standalone repo can be shared, and QBurst can run it. |
-| LINE on stage | **No LINE channel needed.** LINE's official LIFF mock signs in a demo customer. A local stand-in for LINE's ID-token verify endpoint accepts that customer's token. Everything else is the production path: ID token, then token exchange, then a session tied to `line:U…`. | The presenter can't get a MINI App channel (Japan-registered organizations and residents only), and there's no time to request one. Switching to a real LIFF app or MINI App is configuration only. |
+| LINE on stage | **No LINE channel needed.** LINE's official LIFF mock signs in a demo customer. A local stand-in for LINE's ID-token verify endpoint accepts that customer's token. Everything else is the production path: ID token, then token exchange, then a session tied to `line:U…`. | The presenter can't create a MINI App channel: under LINE's MINI App Policy (effective 19 February 2026), only individuals in Japan, Taiwan or Thailand, and organizations with a Japanese corporate number or a Taiwanese or Thai tax ID, can. Switching to a real LIFF app or MINI App is configuration only. |
+| LINE mode (tested) | The same app inside LINE on the presenter's phone, through his own LINE Login channel and LIFF app. One ngrok origin serves the app, which proxies Strapi's MCP, token endpoint and images. A one-command switch changes modes, and a tunnel guard refuses while a mock could sign anyone in. | A MINI App is a LIFF app, so this is the MINI App path minus the channel. QBurst's Japan-eligible provider supplies the channel, and only the LIFF ID and channel ID change. |
 | Confirmation | The ops agent lists staff-confirmed visits, each with a ready-made LINE flex message, then hands over to QBurst. **Optional:** with the presenter's own Official Account, LINE Bot MCP delivers it to the phone. | The delivery channel is LINE's side of the story. A verified MINI App would use service messages instead. |
-| Hosting | Everything runs on the stage laptop: Strapi, the app and the mock verify endpoint. The concierge calls Claude over the internet. | No public URL is needed, and there are fewer moving parts |
+| Hosting | Everything runs on the stage laptop, on 127.0.0.1: Strapi, the app and the mock verify endpoint. The concierge calls Claude over the internet. LINE mode adds one ngrok origin, to the app only. | No public URL is needed on stage, and there are fewer moving parts. Strapi's admin never goes public. |
 | Timeline | Not tight: scope for a complete demo, rehearsed | The user's call |
 
 ## Architecture
@@ -99,7 +103,7 @@ flowchart LR
   OPS -.-> LBM
 ```
 
-In production the verify step goes to LINE's own endpoint and the app runs inside LINE as a LIFF app or MINI App. Nothing else changes.
+In production the verify step goes to LINE's own endpoint and the app runs inside LINE as a LIFF app or MINI App. Nothing else changes. LINE mode tests exactly that on the presenter's phone, with the app passing Strapi's `/mcp`, token endpoint and images on from one public origin.
 
 ## Demo scenario
 
@@ -142,7 +146,7 @@ Each sub-project gets its own implementation plan.
 | Concierge model and provider wiring | Claude Sonnet 5 through the AI SDK, or `qwen3-14b-32k` on Ollama without a key. Both checked against the installed packages on 30 September. | Plan for sub-project 3 |
 | Relations between non-localized, draft/publish and localized types in Strapi 5.55 | Verified in the first task of the Maison plan. Fallback: store slugs instead of relations. | First task of sub-project 1 |
 | Whether MCP prompts can be permission-gated | If not, the prompt holds instructions only and no data, so exposing it is harmless | Sub-project 1 |
-| Moving to a real LIFF app or MINI App later | Config change only: set the channel ID and LIFF ID, and remove `LINE_VERIFY_URL`. The app must then be served over https, with Strapi reachable from the phone. The MINI App and Official Account must share a provider, or user IDs won't match for delivery. | After the event |
+| Running inside LINE, and as a MINI App | LINE mode, tested on the presenter's LINE Login channel: `npm run mode:line` sets the channel ID and LIFF ID and drops `LINE_VERIFY_URL`, and the app serves Strapi's paths over https through one tunnel. For a MINI App, QBurst's provider creates the channel, and only the LIFF ID and channel ID change. The MINI App and Official Account must share a provider, or user IDs won't match for delivery. | LINE mode: before the event. The MINI App: QBurst. |
 
 ## Out of scope
 
