@@ -48,8 +48,11 @@ describe('content-API routes (served at /api/maison)', () => {
     }
   });
 
-  it('keep the four admin routes as they were', () => {
-    expect((routes as any).admin.routes).toHaveLength(4);
+  it('keep the board and demo admin routes as they were', () => {
+    const admin = (routes as any).admin.routes.map((r: any) => `${r.method} ${r.path}`);
+    for (const key of ['GET /appointments', 'POST /appointments/:reference/confirm', 'POST /demo/seed', 'POST /demo/reset']) {
+      expect(admin).toContain(key);
+    }
   });
 });
 

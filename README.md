@@ -18,7 +18,7 @@ Maison is fictional. The plugin uses no real brand's names, products or images.
 | MCP tools on `/mcp` | The customer app, its AI concierge, an ops agent in Claude Desktop | The admin token's Maison permissions |
 | REST routes at `/api/maison` | Websites and other apps | The catalog: a role or API token holding its action. Bookings: a LINE customer session |
 | The admin's AI chat | Staff, through strapi-plugin-tanstack-ai | The admin's role, tool by tool |
-| The Maison admin page | Staff | The admin's role |
+| The Maison admin page and Homepage widget | Staff | The admin's role |
 | The Content Manager | Staff | Content Manager permissions |
 
 The tools, the REST routes, the chat and the board call the same services, so they give the same answers. The Content Manager goes through the Document Service instead, with the same validation on create and update.
@@ -101,7 +101,7 @@ Maison's services sit behind three HTTP doors. Each door checks who is calling i
 | Door | Path | For | Who may call |
 |---|---|---|---|
 | REST routes | `/api/maison/…` | Websites and other apps | The catalog: a role or API token. Bookings: a LINE customer session |
-| Admin routes | `/maison/…` | The requests board | Admins whose role holds the action |
+| Admin routes | `/maison/…` | The requests board and the Homepage widget | Admins whose role holds the action |
 | MCP tools | `/mcp` | Agents | Admin tokens with Maison permissions |
 
 ### The REST routes
@@ -195,6 +195,7 @@ Each tool is offered only to admins whose role holds its permission. The custome
 **Maison** in the admin menu is shown to admins with "MCP: review appointment requests" or "Load and reset demo data":
 - **Appointment requests:** a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead.
 - **Demo data:** **Load demo catalog** and **Reset demo appointments**.
+- **Homepage widget:** **Maison requests** on the admin's Homepage, for admins with "MCP: review appointment requests". It counts the requests waiting for staff, the confirmed visits still ahead and the LINE confirmations sent, and lists the five newest requests with the visit time in Tokyo, the boutique, the masked customer and the status. It refreshes every 5 seconds, and **Open the board** goes to the page above. Its numbers come from `GET /maison/appointments/summary`, which calls `appointments.summarizeRequests()`, and follow the board's own definitions. Strapi keeps each admin's Homepage layout once they've changed it, so an admin who has moved or removed widgets adds this one with **Add Widget**.
 
 ## Tokens
 

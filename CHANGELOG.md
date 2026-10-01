@@ -4,6 +4,8 @@
 
 ### Added
 
+- **A "Maison requests" widget on the admin Homepage** (`plugin::maison.requests`), for admins with "MCP: review appointment requests". It counts the requests waiting for staff, the confirmed visits still ahead and the LINE confirmations sent, lists the five newest requests, and refreshes every 5 seconds.
+  - `GET /maison/appointments/summary`, an admin route gated on the same permission as the board's list. It answers `{ counts, recent }` from the new `appointments.summarizeRequests()`, which counts with the board's own definitions and returns the board's "All requests" rows, masked the same way.
 - **REST routes at `/api/maison`**, on the same services, input schemas and LINE customer identity as the MCP tools:
   - `GET /collections`, `GET /products`, `GET /products/:slug` and `GET /boutiques`, as `browse_collections`, `search_products`, `view_product` and `find_boutiques`. A role or API token must hold `plugin::maison.catalog.browseCollections`, `searchProducts`, `viewProduct` or `findBoutiques`.
   - `POST /appointments` and `GET /my-appointments`, as `request_appointment` and `my_appointments`, for the signed-in LINE customer only. A new `customer-session` policy checks the session the way `/mcp` does (oauth-mcp-manager's `resolveAccessToken`), then resolves the customer the way the tools do (`resolveSubject`). Without a session `/mcp` would accept, it answers 401 with `WWW-Authenticate: Bearer`, and without oauth-mcp-manager 1.1 it answers 503.

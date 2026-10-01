@@ -18,6 +18,13 @@ export default {
     type: 'admin',
     routes: [
       { method: 'GET', path: '/appointments', handler: 'appointments.list', config: { policies: allow(ACTION.appointmentsReview) } },
+      // Ahead of every route that takes a :reference, so none of them can take "summary" for one.
+      {
+        method: 'GET',
+        path: '/appointments/summary',
+        handler: 'appointments.summary',
+        config: { policies: allow(ACTION.appointmentsReview) },
+      },
       {
         method: 'POST',
         path: '/appointments/:reference/confirm',
