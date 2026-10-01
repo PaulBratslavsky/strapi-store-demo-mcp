@@ -203,7 +203,7 @@ Each tool is offered only to admins whose role holds its permission. The custome
 ## The admin page
 
 **Maison** in the admin menu is shown to admins with "MCP: review appointment requests" or "Load and reset demo data":
-- **Appointment requests:** a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead.
+- **Appointment requests:** the Homepage widget's three cards (waiting for staff, confirmed and upcoming, LINE sent), then a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Each row shows the customer's note. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead, and the cards update as soon as they confirm.
 - **Demo data:** **Load demo catalog** and **Reset demo appointments**.
 
 ## The Homepage widget

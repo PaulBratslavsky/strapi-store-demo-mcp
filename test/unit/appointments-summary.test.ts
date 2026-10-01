@@ -23,18 +23,19 @@ const drafts = [
   },
 ];
 
+/**
+ * The appointments' findMany, kept so a test can read the query the newest rows come from. The fake answers from
+ * `drafts` in fixture order whatever the sort and limit say, so the order itself is only proven by asking for it.
+ */
+const appointmentFindMany = vi.fn(async (query: { status: string; fields?: string[] }) => {
+  if (query.status === 'published') return [{ documentId: 'doc-oldest' }]; // the oldest is confirmed
+  if (query.fields?.includes('reference')) return []; // no confirmed visit is still ahead
+  return drafts;
+});
+
 /** The Document Service calls summarizeRequests makes, answered from `drafts` whatever their filters say. */
 const documents = (uid: string) => {
-  if (uid === UID.appointment) {
-    return {
-      count: vi.fn(async () => 1),
-      findMany: vi.fn(async (query: { status: string; fields?: string[] }) => {
-        if (query.status === 'published') return [{ documentId: 'doc-oldest' }]; // the oldest is confirmed
-        if (query.fields?.includes('reference')) return []; // no confirmed visit is still ahead
-        return drafts;
-      }),
-    };
-  }
+  if (uid === UID.appointment) return { count: vi.fn(async () => 1), findMany: appointmentFindMany };
   if (uid === UID.boutique) return { findMany: vi.fn(async () => [{ documentId: 'b-ginza', slug: 'ginza', name: 'Ginza Flagship' }]) };
   return { findMany: vi.fn(async () => []) }; // notifications, product labels
 };
@@ -69,7 +70,12 @@ describe('appointments.summarizeRequests: the newest requests', () => {
   });
 
   it('keeps the rows in the order the board lists them, newest request first', async () => {
+    appointmentFindMany.mockClear();
     const { recent } = await summarize();
+    // The newest five of all the drafts, as the board's "All requests" view asks for them.
+    expect(appointmentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'draft', filters: {}, sort: 'createdAt:desc', limit: 5 })
+    );
     expect(recent.map((row) => row.reference)).toEqual(['APT-3333', 'APT-1111']);
     const times = recent.map((row) => Date.parse(row.createdAt));
     expect(times).toEqual([...times].sort((a, b) => b - a));
