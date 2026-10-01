@@ -8,7 +8,7 @@ The photos are used under the [Pexels License](https://www.pexels.com/license/):
 
 | File | Pexels photo page | Photographer | Edit |
 | --- | --- | --- | --- |
-| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | None |
+| `boutique-osaka.jpg` | [Stunning Osaka Cityscape at Sunset in Japan](https://www.pexels.com/photo/stunning-osaka-cityscape-at-sunset-in-japan-34985872/) | Ariyan | A hotel's rooftop sign and a street sign blurred |
 | `collection-atelier.jpg` | [Tools and Leather Lying on a Desk in a Leather Crafting Workshop](https://www.pexels.com/photo/tools-and-leather-lying-on-a-desk-in-a-leather-crafting-workshop-4452603/) | Vlada Karpovich | None |
 | `collection-gifts.jpg` | [Close-up Shot of Black Gift Boxes](https://www.pexels.com/photo/close-up-shot-of-black-gift-boxes-5872362/) | Max Fischer | None |
 | `collection-voyage.jpg` | [Vintage Black Luggage Stack in Cozy Setting](https://www.pexels.com/photo/vintage-black-luggage-stack-in-cozy-setting-36933446/) | Jonathan Borba | None |
@@ -22,10 +22,10 @@ The photos are used under the [Pexels License](https://www.pexels.com/license/):
 | `product-passport-cover.jpg` | [Leather Purse and a Car Key Case](https://www.pexels.com/photo/leather-purse-and-a-car-key-case-23371092/) | Beck Galindo | Cropped to leave out a banknote |
 | `product-tote-soleil.jpg` | [Photo of Purse with Crocodile Pattern Leather](https://www.pexels.com/photo/photo-of-purse-with-crocodile-pattern-leather-26954381/) | Jose Martin Segura Benites | None |
 | `product-voyage-trunk-110.jpg` | [Close-up Shot of Dusty Small Chests](https://www.pexels.com/photo/close-up-shot-of-dusty-small-chests-12860984/) | Jotham Sutharson | None |
-| `product-watch-roll-trois.jpg` | [Classic Leather Watch Roll with Timepieces](https://www.pexels.com/photo/classic-leather-watch-roll-with-timepieces-32128448/) | Atelier Kommpass | Dials of the four watches in the roll blurred, to hide brand names |
-| `product-weekender-50.jpg` | [Black Leather Bag on White Sofa](https://www.pexels.com/photo/black-leather-bag-on-white-sofa-6773814/) | Rachel Claire | None |
+| `product-watch-roll-trois.jpg` | [Classic Leather Watch Roll with Timepieces](https://www.pexels.com/photo/classic-leather-watch-roll-with-timepieces-32128448/) | Atelier Kommpass | Every watch dial blurred, to hide brand names |
+| `product-weekender-50.jpg` | [Black Leather Bag on White Sofa](https://www.pexels.com/photo/black-leather-bag-on-white-sofa-6773814/) | Rachel Claire | A small woven label blurred |
 
-The photos show no recognisable people, and they were chosen and edited to keep brand names out of the frame. Anyone replacing an image should keep it that way.
+No photo shows a brand or a recognisable person: labels, dials and signs that carried a name are blurred or cropped out, as the Edit column says. Anyone replacing an image should keep it that way.
 
 ## Generated placeholders
 
