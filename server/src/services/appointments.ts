@@ -357,7 +357,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
 
     /**
      * Staff confirmation: publishes the draft, the same as Publish in the Content Manager. Confirming twice is safe.
-     * It never messages anyone; the LINE ops agent sends the confirmation afterwards.
+     * Publishing sends the customer's LINE confirmation (document-middleware.ts) before it returns, so the answer's
+     * confirmationSent already says whether it went out. Confirming again publishes nothing, so it sends nothing.
      */
     async confirm(reference: string, now: Date = new Date()): Promise<ServiceResult<ConfirmedAppointment>> {
       const { defaultLocale, timezone } = getConfig(strapi);

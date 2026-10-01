@@ -1,69 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UID } from '../../server/src/constants';
 import confirmations from '../../server/src/services/confirmations';
-import lineConfirmations from '../../server/src/services/line-confirmations';
-import { fakeStrapi } from './fake-strapi';
+import { LIFF_URL, LINE_API, LINE_CONFIG as CONFIG, LINE_USER_ID, PUBLISHED, TOKEN, lineAnswers, world } from './fake-line';
 
 type Doc = Record<string, any>;
 
-const TOKEN = 'test-channel-token';
-const LINE_API = 'http://127.0.0.1:4010';
-const LIFF_URL = 'https://liff.line.me/1234567890-AbCdEfGh';
-const LINE_USER_ID = `U${'a'.repeat(32)}`;
-const CONFIG = { liffUrl: LIFF_URL, lineChannelAccessToken: TOKEN, lineApiBaseUrl: LINE_API };
 const NOW = new Date('2026-10-01T00:00:00Z');
-
-/** APT-4821's published version, as the Document Service returns it with the boutique and products populated. */
-const PUBLISHED: Doc = {
-  documentId: 'doc-4821',
-  reference: 'APT-4821',
-  customer: `line:${LINE_USER_ID}`,
-  requestedFor: '2026-10-10T05:00:00.000Z', // 14:00 in Tokyo
-  boutique: { name: '銀座本店', address: '東京都中央区銀座 1-2-3（デモ）' },
-  products: [{ name: 'ウィークエンダー 50' }, { name: 'パスポートカバー' }],
-};
-
-/**
- * APT-4821 as the Document Service holds it: a draft (unless `exists` is false), its published version (or none), and
- * the notifications recorded so far. `record` stands in for confirmations.record and appends to them, so a second send
- * sees the first one.
- */
-const world = ({ exists = true, published = PUBLISHED as Doc | null, sent = false, config = CONFIG as Record<string, unknown> } = {}) => {
-  const notifications: Doc[] = sent ? [{ appointmentReference: 'APT-4821', outcome: 'sent' }] : [];
-  const appointmentFindOne = vi.fn(async ({ documentId, status }: Doc) =>
-    status === 'published' && documentId === 'doc-4821' ? published : null
-  );
-  const appointmentFindMany = vi.fn(async ({ status }: Doc) => (status === 'published' && published ? [published] : []));
-  const documents = (uid: string) => {
-    if (uid === UID.notification) {
-      return {
-        findFirst: vi.fn(async ({ filters }: Doc) =>
-          notifications.find(
-            (row) => row.outcome === filters.outcome?.$eq && row.appointmentReference === filters.appointmentReference?.$eq
-          ) ?? null
-        ),
-        findMany: vi.fn(async () => notifications),
-      };
-    }
-    return {
-      findFirst: vi.fn(async ({ status, filters }: Doc) =>
-        exists && status === 'draft' && filters.reference?.$eq === 'APT-4821' ? { documentId: 'doc-4821' } : null
-      ),
-      findOne: appointmentFindOne,
-      findMany: appointmentFindMany,
-    };
-  };
-  const record = vi.fn(async (input: Doc) => {
-    notifications.push({ appointmentReference: input.reference, outcome: input.status });
-    return { ok: true, value: { notification: { reference: input.reference, status: input.status }, alreadyRecorded: false } };
-  });
-  const strapi = fakeStrapi({ documents, config, services: { confirmations: { record } } });
-  return { strapi, record, appointmentFindOne, appointmentFindMany, sender: lineConfirmations({ strapi }) };
-};
-
-/** LINE's push endpoint, answering `status` with `body`. */
-const lineAnswers = (status = 200, body: unknown = { sentMessages: [{ id: '1', quoteToken: 'q' }] }) =>
-  vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(body), { status }));
 
 let fetchMock: ReturnType<typeof lineAnswers>;
 const useFetch = (mock: ReturnType<typeof lineAnswers>) => {

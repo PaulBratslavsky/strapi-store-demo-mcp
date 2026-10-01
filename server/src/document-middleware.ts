@@ -1,7 +1,7 @@
 import type { Core } from '@strapi/strapi';
 import { errors } from '@strapi/utils';
 
-import { OCCASIONS, PERSONALIZATION_KINDS, UID } from './constants';
+import { OCCASIONS, PERSONALIZATION_KINDS, PLUGIN_ID, UID } from './constants';
 import { validateOpeningHours } from './domain/hours';
 import { validateEnumArray } from './domain/validation';
 
@@ -38,7 +38,31 @@ const assertUniqueStockPair = async (strapi: Core.Strapi, data: Data) => {
   if (existing > 0) fail('A stock level for this product and boutique already exists; update it instead.');
 };
 
-/** Same rules for the admin and the tools: every create/update goes through the Document Service. */
+/** The references of the appointments a publish published: one, as appointments aren't localized. */
+const publishedReferences = (result: unknown): string[] => {
+  const entries = ((result as { entries?: Data[] } | null)?.entries ?? []) as Data[];
+  return [...new Set(entries.map((entry) => entry.reference).filter((reference): reference is string => typeof reference === 'string'))];
+};
+
+/** Sends each published appointment's LINE confirmation. Nothing here throws: a failure is logged, never passed on. */
+const sendConfirmations = async (strapi: Core.Strapi, published: unknown) => {
+  for (const reference of publishedReferences(published)) {
+    try {
+      await strapi.plugin(PLUGIN_ID).service('line-confirmations').sendConfirmation(reference);
+    } catch (error) {
+      strapi.log.error(`[maison] The LINE confirmation for ${reference} couldn't be sent: ${(error as Error)?.message ?? error}`);
+    }
+  }
+};
+
+/**
+ * Same rules for the admin and the tools: every create/update goes through the Document Service.
+ *
+ * And the same confirmation: publishing an appointment confirms the visit, whichever way it happens. That's the board's
+ * Confirm, the admin chat and MCP clients (all through appointments.confirm), and Publish in the Content Manager. Once
+ * the publish has gone through, Strapi sends the customer the LINE confirmation and waits for it, so the board's next
+ * refresh shows how it went. The push's 8-second timeout bounds that wait. Sending never fails the publish.
+ */
 export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
   strapi.documents.use(async (ctx, next) => {
     if (ctx.action === 'create' || ctx.action === 'update') {
@@ -48,5 +72,12 @@ export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
       if (ctx.uid === UID.stockLevel && ctx.action === 'create') await assertUniqueStockPair(strapi, data);
     }
     return next();
+  });
+
+  strapi.documents.use(async (ctx, next) => {
+    if (ctx.uid !== UID.appointment || ctx.action !== 'publish') return next();
+    const published = await next();
+    await sendConfirmations(strapi, published);
+    return published;
   });
 };
