@@ -126,7 +126,7 @@ describe('customer-session policy', () => {
   });
 
   it.each(['resolveAccessToken', 'resolveSubject'])(
-    'answers 401 when %s throws, and logs neither the token, the error message, nor the admin key',
+    'answers 503 temporarily_unavailable, not a sign-out, when %s throws, and logs neither the token, the error message, nor the admin key',
     async (name) => {
       const { strapi, book } = withResolvers({
         [name]: async (value: string) => {
@@ -134,8 +134,11 @@ describe('customer-session policy', () => {
         },
       });
       const response = await postAppointment(strapi, { authorization: `Bearer ${TOKEN}` });
-      expect(response.status).toBe(401);
-      expect(response.body).toEqual(NOT_SIGNED_IN);
+      expect(response.status).toBe(503);
+      expect(response.headers['WWW-Authenticate']).toBeUndefined();
+      expect(response.body.error.code).toBe('temporarily_unavailable');
+      expect(response.body.error.message).toMatch(/server error/);
+      expect(response.state.maisonCustomer).toBeUndefined();
       expect(book).not.toHaveBeenCalled();
       expect(strapi.log.warn).toHaveBeenCalled();
       expect(logged(strapi)).not.toContain(TOKEN);

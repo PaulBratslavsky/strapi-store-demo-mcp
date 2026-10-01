@@ -3,7 +3,8 @@ import type { ErrorCode } from './tool-result';
 /**
  * The HTTP status of each expected failure on the REST routes.
  * 409: the same request can succeed later, once something changes (the boutique's hours, the customer's open
- * requests, a confirmation). 422: it can't succeed as sent, because time only moves forward.
+ * requests, a confirmation). 422: it can't succeed as sent, because time only moves forward. 503: the server can't
+ * check who is calling, because customer sign-in isn't configured, or because checking failed this time.
  */
 const STATUS: Record<ErrorCode, number> = {
   invalid_input: 400,
@@ -14,6 +15,7 @@ const STATUS: Record<ErrorCode, number> = {
   not_published: 409,
   in_the_past: 422,
   not_configured: 503,
+  temporarily_unavailable: 503,
 };
 
 export const httpStatus = (code: ErrorCode): number => STATUS[code];

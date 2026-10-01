@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import catalogController from '../../server/src/controllers/catalog';
+import boutiquesController from '../../server/src/controllers/boutiques';
+import collectionsController from '../../server/src/controllers/collections';
 import customerController from '../../server/src/controllers/customer';
+import productsController from '../../server/src/controllers/products';
 import { browseCollectionsTool } from '../../server/src/mcp/tools/browse-collections';
 import { findBoutiquesTool } from '../../server/src/mcp/tools/find-boutiques';
 import { myAppointmentsTool } from '../../server/src/mcp/tools/my-appointments';
@@ -22,7 +24,9 @@ const fakeCtx = ({ query = {}, params = {}, body = undefined as unknown, state =
     set: (field: string, value: string) => void (headers[field] = value),
   };
 };
-const catalogWith = (catalog: Record<string, unknown>) => catalogController({ strapi: fakeStrapi({ services: { catalog } }) });
+/** A catalog controller (collections, products or boutiques), with the catalog service as given. */
+const withCatalog = <T>(controller: (deps: { strapi: any }) => T, catalog: Record<string, unknown>) =>
+  controller({ strapi: fakeStrapi({ services: { catalog } }) });
 const customerWith = (appointments: Record<string, unknown>) => customerController({ strapi: fakeStrapi({ services: { appointments } }) });
 
 /** The error a tool returns for `args`, run against the same fake services. */
@@ -45,11 +49,11 @@ const view = {
 };
 const booking = { boutique: 'ginza', productSlugs: ['weekender-50'], requestedFor: '2030-01-12T14:00:00+09:00' };
 
-describe('GET /collections (catalog.browseCollections)', () => {
+describe('GET /collections (collections.find)', () => {
   it('answers what browse_collections returns, in the default locale', async () => {
     const browseCollections = vi.fn(async () => [{ slug: 'voyage', name: 'ヴォヤージュ', teaser: '旅', heroImageUrl: null, productCount: 4 }]);
     const ctx = fakeCtx();
-    await catalogWith({ browseCollections }).browseCollections(ctx);
+    await withCatalog(collectionsController, { browseCollections }).find(ctx);
     expect(browseCollections).toHaveBeenCalledWith('ja');
     expect(ctx.status).toBe(200);
     expect(browseCollectionsTool.resolveOutputSchema(context).parse(ctx.body)).toEqual(ctx.body);
@@ -59,7 +63,7 @@ describe('GET /collections (catalog.browseCollections)', () => {
   it('rejects a locale the tools reject, with 400 invalid_input, before calling the service', async () => {
     const browseCollections = vi.fn();
     const ctx = fakeCtx({ query: { locale: 'fr' } });
-    await catalogWith({ browseCollections }).browseCollections(ctx);
+    await withCatalog(collectionsController, { browseCollections }).find(ctx);
     expect(ctx.status).toBe(400);
     expect(ctx.body.error.code).toBe('invalid_input');
     expect(ctx.body.error.message).toMatch(/^locale: /);
@@ -67,11 +71,11 @@ describe('GET /collections (catalog.browseCollections)', () => {
   });
 });
 
-describe('GET /products (catalog.searchProducts)', () => {
+describe('GET /products (products.find)', () => {
   it('decodes the query string into the types search_products takes, and answers what the tool returns', async () => {
     const searchProducts = vi.fn(async () => ({ ok: true, value: { total: 1, products: [card] } }));
     const ctx = fakeCtx({ query: { occasion: 'travel', maxPriceJpy: '400000', minPriceJpy: '0', personalizable: 'true', inStockAt: 'ginza', limit: '5', locale: 'en' } });
-    await catalogWith({ searchProducts }).searchProducts(ctx);
+    await withCatalog(productsController, { searchProducts }).find(ctx);
     const args = { occasion: 'travel', maxPriceJpy: 400000, minPriceJpy: 0, personalizable: true, inStockAt: 'ginza', limit: 5, locale: 'en' };
     expect(searchProducts).toHaveBeenCalledWith('en', args);
     expect(ctx.status).toBe(200);
@@ -95,7 +99,7 @@ describe('GET /products (catalog.searchProducts)', () => {
   ])('answers %j with 400 invalid_input and never calls the service', async (query) => {
     const searchProducts = vi.fn();
     const ctx = fakeCtx({ query });
-    await catalogWith({ searchProducts }).searchProducts(ctx);
+    await withCatalog(productsController, { searchProducts }).find(ctx);
     expect(ctx.status).toBe(400);
     expect(ctx.body.error.code).toBe('invalid_input');
     expect(searchProducts).not.toHaveBeenCalled();
@@ -104,7 +108,7 @@ describe('GET /products (catalog.searchProducts)', () => {
   it('answers a minimum above the maximum the way search_products does', async () => {
     const searchProducts = vi.fn();
     const ctx = fakeCtx({ query: { minPriceJpy: '500000', maxPriceJpy: '100000' } });
-    await catalogWith({ searchProducts }).searchProducts(ctx);
+    await withCatalog(productsController, { searchProducts }).find(ctx);
     expect(ctx.status).toBe(400);
     expect(ctx.body.error).toEqual(await toolErrorFor(searchProductsTool, { catalog: { searchProducts } }, { minPriceJpy: 500000, maxPriceJpy: 100000 }));
     expect(searchProducts).not.toHaveBeenCalled();
@@ -114,18 +118,18 @@ describe('GET /products (catalog.searchProducts)', () => {
     const failure = { ok: false, code: 'not_found', message: 'No boutique "kyoto".', hint: 'Call find_boutiques to find valid boutique slugs.' };
     const searchProducts = vi.fn(async () => failure);
     const ctx = fakeCtx({ query: { inStockAt: 'kyoto' } });
-    await catalogWith({ searchProducts }).searchProducts(ctx);
+    await withCatalog(productsController, { searchProducts }).find(ctx);
     expect(ctx.status).toBe(404);
     expect(ctx.body).toEqual({ error: { code: 'not_found', message: failure.message, hint: failure.hint } });
   });
 });
 
-describe('GET /products/:slug (catalog.viewProduct)', () => {
+describe('GET /products/:slug (products.findOne)', () => {
   it('answers what view_product returns, with the slug from the path', async () => {
     const product = { slug: 'weekender-50', name: 'Weekender 50' };
     const getProduct = vi.fn(async () => product);
     const ctx = fakeCtx({ params: { slug: 'weekender-50' }, query: { locale: 'en', slug: 'passport-cover' } });
-    await catalogWith({ getProduct }).viewProduct(ctx);
+    await withCatalog(productsController, { getProduct }).findOne(ctx);
     expect(getProduct).toHaveBeenCalledWith('en', 'weekender-50');
     expect(ctx.status).toBe(200);
     expect(ctx.body).toEqual({ product });
@@ -134,7 +138,7 @@ describe('GET /products/:slug (catalog.viewProduct)', () => {
   it('answers an unknown slug with 404 and exactly the error view_product returns', async () => {
     const getProduct = vi.fn(async () => null);
     const ctx = fakeCtx({ params: { slug: 'no-such-piece' } });
-    await catalogWith({ getProduct }).viewProduct(ctx);
+    await withCatalog(productsController, { getProduct }).findOne(ctx);
     expect(ctx.status).toBe(404);
     expect(ctx.body.error).toEqual(await toolErrorFor(viewProductTool, { catalog: { getProduct } }, { slug: 'no-such-piece' }));
     expect(ctx.body.error.hint).toBe('Call search_products to find valid product slugs.');
@@ -143,18 +147,18 @@ describe('GET /products/:slug (catalog.viewProduct)', () => {
   it('rejects a slug the tool rejects, with 400', async () => {
     const getProduct = vi.fn();
     const ctx = fakeCtx({ params: { slug: 'Weekender 50' } });
-    await catalogWith({ getProduct }).viewProduct(ctx);
+    await withCatalog(productsController, { getProduct }).findOne(ctx);
     expect(ctx.status).toBe(400);
     expect(ctx.body.error.message).toBe(`slug: ${schemaMessage(viewProductTool, { slug: 'Weekender 50' })}`);
     expect(getProduct).not.toHaveBeenCalled();
   });
 });
 
-describe('GET /boutiques (catalog.findBoutiques)', () => {
+describe('GET /boutiques (boutiques.find)', () => {
   it('takes a list as a repeated parameter and answers what find_boutiques returns', async () => {
     const getBoutiques = vi.fn(async () => ({ ok: true, value: [boutique] }));
     const ctx = fakeCtx({ query: { productSlugs: ['weekender-50', 'passport-cover'], date: '2030-01-15' } });
-    await catalogWith({ getBoutiques }).findBoutiques(ctx);
+    await withCatalog(boutiquesController, { getBoutiques }).find(ctx);
     expect(getBoutiques).toHaveBeenCalledWith('ja', { date: '2030-01-15', productSlugs: ['weekender-50', 'passport-cover'] });
     expect(ctx.status).toBe(200);
     expect(ctx.body).toEqual({ date: '2030-01-15', boutiques: [boutique] });
@@ -164,7 +168,7 @@ describe('GET /boutiques (catalog.findBoutiques)', () => {
   it('takes a single parameter as a list of one, and answers date null without a date', async () => {
     const getBoutiques = vi.fn(async () => ({ ok: true, value: [boutique] }));
     const ctx = fakeCtx({ query: { productSlugs: 'weekender-50' } });
-    await catalogWith({ getBoutiques }).findBoutiques(ctx);
+    await withCatalog(boutiquesController, { getBoutiques }).find(ctx);
     expect(getBoutiques).toHaveBeenCalledWith('ja', { date: undefined, productSlugs: ['weekender-50'] });
     expect(ctx.body.date).toBeNull();
   });
@@ -172,7 +176,7 @@ describe('GET /boutiques (catalog.findBoutiques)', () => {
   it('rejects a date that is not on the calendar with the same message as the tool', async () => {
     const getBoutiques = vi.fn();
     const ctx = fakeCtx({ query: { date: '2026-02-30' } });
-    await catalogWith({ getBoutiques }).findBoutiques(ctx);
+    await withCatalog(boutiquesController, { getBoutiques }).find(ctx);
     expect(ctx.status).toBe(400);
     expect(ctx.body.error).toEqual({ code: 'invalid_input', message: `date: ${schemaMessage(findBoutiquesTool, { date: '2026-02-30' })}` });
     expect(ctx.body.error.message).toBe('date: Not a real calendar date.');
@@ -185,7 +189,7 @@ describe('GET /boutiques (catalog.findBoutiques)', () => {
   ])('rejects %s with 400', async (_label, query) => {
     const getBoutiques = vi.fn();
     const ctx = fakeCtx({ query });
-    await catalogWith({ getBoutiques }).findBoutiques(ctx);
+    await withCatalog(boutiquesController, { getBoutiques }).find(ctx);
     expect(ctx.status).toBe(400);
     expect(getBoutiques).not.toHaveBeenCalled();
   });
@@ -194,7 +198,7 @@ describe('GET /boutiques (catalog.findBoutiques)', () => {
     const failure = { ok: false, code: 'not_found', message: 'No published product "no-such-piece".', hint: 'Call search_products to find valid product slugs.' };
     const getBoutiques = vi.fn(async () => failure);
     const ctx = fakeCtx({ query: { productSlugs: 'no-such-piece' } });
-    await catalogWith({ getBoutiques }).findBoutiques(ctx);
+    await withCatalog(boutiquesController, { getBoutiques }).find(ctx);
     expect(ctx.status).toBe(404);
     expect(ctx.body.error).toEqual(await toolErrorFor(findBoutiquesTool, { catalog: { getBoutiques } }, { productSlugs: ['no-such-piece'] }));
   });

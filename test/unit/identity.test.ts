@@ -113,7 +113,7 @@ describe('identity.customerSession, the one code path for the MCP tools and the 
     }
   });
 
-  it('is signed out when either lookup throws, and logs neither the token, the error message, nor the admin key', async () => {
+  it('is an error, not a sign-out, when either lookup throws, and logs neither the token, the error message, nor the admin key', async () => {
     const failing = async (value: string) => {
       throw new Error(`database is locked while reading ${value}`);
     };
@@ -122,7 +122,7 @@ describe('identity.customerSession, the one code path for the MCP tools and the 
       { resolveAccessToken: async () => VALID_SESSION, resolveSubject: failing },
     ]) {
       const { strapi, identity } = withOAuth(oauth);
-      expect(await identity.customerSession(`Bearer ${TOKEN}`)).toEqual({ status: 'signed_out' });
+      expect(await identity.customerSession(`Bearer ${TOKEN}`)).toEqual({ status: 'error' });
       expect(strapi.log.warn).toHaveBeenCalled();
       expect(logged(strapi)).not.toContain(TOKEN);
       expect(logged(strapi)).not.toContain('database is locked');
@@ -143,12 +143,58 @@ describe('identity.customerSession, the one code path for the MCP tools and the 
     }
   });
 
-  it('skips the session check only when told /mcp has already run it, as for an MCP tool call', async () => {
+  it('always checks the session: app code has no option that skips the check', async () => {
+    // Only the MCP tools may skip it, inside the service, because /mcp has already run it on their request.
     const resolveAccessToken = vi.fn(async () => ({ valid: false, reason: 'unknown_token' }));
     const { identity } = withOAuth({ resolveAccessToken, resolveSubject: async () => VALID });
-    expect(await identity.customerSession(`Bearer ${TOKEN}`, { sessionValidated: true })).toEqual({ status: 'signed_in', subject: VALID });
-    expect(resolveAccessToken).not.toHaveBeenCalled();
-    const withoutCheck = withOAuth({ resolveSubject: async () => VALID }).identity;
-    expect(await withoutCheck.customerSession(`Bearer ${TOKEN}`, { sessionValidated: true })).toEqual({ status: 'signed_in', subject: VALID });
+    const customerSession = identity.customerSession as (...args: unknown[]) => Promise<unknown>;
+    expect(await customerSession(`Bearer ${TOKEN}`, { sessionValidated: true })).toEqual({ status: 'signed_out' });
+    expect(resolveAccessToken).toHaveBeenCalledWith(TOKEN);
+    const withoutCheck = withOAuth({ resolveSubject: async () => VALID }).identity.customerSession as (...args: unknown[]) => Promise<unknown>;
+    expect(await withoutCheck(`Bearer ${TOKEN}`, { sessionValidated: true })).toEqual({ status: 'unavailable' });
+  });
+});
+
+const ROTATED = 'mcp_at_rotated-session-token';
+
+describe("identity calls oauth-mcp-manager's methods on its service, so they can use `this`", () => {
+  /**
+   * Like oauth-mcp-manager's oauth service, whose resolveAccessToken revokes a rotated grant through this.revokeGrant.
+   * Its resolveSubject doesn't use `this` in 1.1, but any service method may, so this one does too.
+   */
+  const oauthUsingThis = () => ({
+    sessions: { [TOKEN]: VALID_SESSION } as Record<string, unknown>,
+    subjects: { [`Bearer ${TOKEN}`]: VALID, [`Bearer ${ROTATED}`]: VALID } as Record<string, string>,
+    revoked: [] as number[],
+    async revokeGrant(grantId: number) {
+      this.revoked.push(grantId);
+      return true;
+    },
+    async resolveAccessToken(token: string) {
+      if (token === ROTATED) {
+        await this.revokeGrant(9);
+        return { valid: false, reason: 'grant_revoked' };
+      }
+      return this.sessions[token] ?? { valid: false, reason: 'unknown_token' };
+    },
+    async resolveSubject(authorization: string) {
+      return this.subjects[authorization] ?? null;
+    },
+  });
+
+  it('checks the session and resolves the customer on the REST door', async () => {
+    const { identity } = withOAuth(oauthUsingThis());
+    expect(await identity.customerSession(`Bearer ${TOKEN}`)).toEqual({ status: 'signed_in', subject: VALID });
+  });
+
+  it('refuses a rotated session after revoking it through this.revokeGrant, as /mcp does', async () => {
+    const oauth = oauthUsingThis();
+    expect(await withOAuth(oauth).identity.customerSession(`Bearer ${ROTATED}`)).toEqual({ status: 'signed_out' });
+    expect(oauth.revoked).toEqual([9]);
+  });
+
+  it('resolves the customer of an MCP tool call', async () => {
+    const { identity } = withOAuth(oauthUsingThis());
+    expect(await identity.getCustomerSubject(extraWith({ authorization: `Bearer ${TOKEN}` }))).toBe(VALID);
   });
 });

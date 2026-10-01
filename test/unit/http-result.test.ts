@@ -14,6 +14,8 @@ describe('httpStatus', () => {
     ['not_published', 409],
     ['in_the_past', 422],
     ['not_configured', 503],
+    // A server fault while checking a customer's session: try again, it isn't a sign-out.
+    ['temporarily_unavailable', 503],
   ])('answers %s with %i', (code, status) => {
     expect(httpStatus(code)).toBe(status);
   });

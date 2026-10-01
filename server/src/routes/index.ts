@@ -36,16 +36,17 @@ export default {
     ],
   },
   /**
-   * The REST door, served at /api/maison/<path>. The catalog routes use Strapi's own content-API auth: a role or an
-   * API token must hold plugin::maison.catalog.<action>, e.g. the Public role under Settings → Roles.
+   * The REST door, served at /api/maison/<path>. The catalog routes use Strapi's own content-API auth: a role or a
+   * custom API token must hold the action, plugin::maison.<handler>, e.g. the Public role under Settings → Roles. Their
+   * actions are named find and findOne, the only ones Strapi lets a read-only API token call.
    */
   'content-api': {
     type: 'content-api',
     routes: [
-      { method: 'GET', path: '/collections', handler: 'catalog.browseCollections' },
-      { method: 'GET', path: '/products', handler: 'catalog.searchProducts' },
-      { method: 'GET', path: '/products/:slug', handler: 'catalog.viewProduct' },
-      { method: 'GET', path: '/boutiques', handler: 'catalog.findBoutiques' },
+      { method: 'GET', path: '/collections', handler: 'collections.find' },
+      { method: 'GET', path: '/products', handler: 'products.find' },
+      { method: 'GET', path: '/products/:slug', handler: 'products.findOne' },
+      { method: 'GET', path: '/boutiques', handler: 'boutiques.find' },
       { method: 'POST', path: '/appointments', handler: 'customer.requestAppointment', config: customerOnly() },
       { method: 'GET', path: '/my-appointments', handler: 'customer.myAppointments', config: customerOnly() },
     ],

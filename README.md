@@ -108,10 +108,10 @@ Maison's services sit behind three HTTP doors. Each door checks who is calling i
 
 | Route | Mirrors | Access |
 |---|---|---|
-| `GET /api/maison/collections` | `browse_collections` | `plugin::maison.catalog.browseCollections` |
-| `GET /api/maison/products` | `search_products` | `plugin::maison.catalog.searchProducts` |
-| `GET /api/maison/products/:slug` | `view_product` | `plugin::maison.catalog.viewProduct` |
-| `GET /api/maison/boutiques` | `find_boutiques` | `plugin::maison.catalog.findBoutiques` |
+| `GET /api/maison/collections` | `browse_collections` | `plugin::maison.collections.find` |
+| `GET /api/maison/products` | `search_products` | `plugin::maison.products.find` |
+| `GET /api/maison/products/:slug` | `view_product` | `plugin::maison.products.findOne` |
+| `GET /api/maison/boutiques` | `find_boutiques` | `plugin::maison.boutiques.find` |
 | `POST /api/maison/appointments` | `request_appointment` | A LINE customer session |
 | `GET /api/maison/my-appointments` | `my_appointments` | A LINE customer session |
 
@@ -148,16 +148,21 @@ curl -H "Authorization: Bearer $SESSION" "$STRAPI/api/maison/my-appointments?loc
 | 409 | `boutique_closed`, `too_many_open_requests` | The same request can succeed once something changes: the boutique's hours, or one of the customer's open requests |
 | 422 | `in_the_past` | The visit starts less than 30 minutes from now |
 | 503 | `not_configured` | Customer sign-in isn't configured: oauth-mcp-manager 1.1 isn't installed |
+| 503 | `temporarily_unavailable` | Checking a customer's session failed on the server, such as a database error. It isn't a sign-out: try again. Only the REST door has this code |
 
 Strapi answers some requests itself, in its own error body: a 403 when no role or token holds a catalog action, and a 401 for a bearer token it doesn't recognize on a catalog route.
 
 ### Grant the catalog
 
-The catalog routes use Strapi's content-API permissions. Grant their four actions to a role under **Settings → Users & Permissions plugin → Roles**, such as **Public** for a public website, or to an API token:
-- `plugin::maison.catalog.browseCollections`
-- `plugin::maison.catalog.searchProducts`
-- `plugin::maison.catalog.viewProduct`
-- `plugin::maison.catalog.findBoutiques`
+The catalog routes use Strapi's content-API permissions. Either of these may call them:
+- **A role holding their actions,** under **Settings → Users & Permissions plugin → Roles**: **Public** for a public website.
+- **A read-only, full-access or custom API token,** under **Settings → API Tokens**. A custom token needs the actions. A read-only token can call them because they're named `find` and `findOne`, the only actions Strapi lets a read-only token call.
+
+The four actions:
+- `plugin::maison.collections.find`, for `GET /collections`
+- `plugin::maison.products.find`, for `GET /products`
+- `plugin::maison.products.findOne`, for `GET /products/:slug`
+- `plugin::maison.boutiques.find`, for `GET /boutiques`
 
 The list there also shows the two customer actions, `plugin::maison.customer.requestAppointment` and `plugin::maison.customer.myAppointments`. Roles don't apply to them, so granting them opens nothing.
 
@@ -167,11 +172,16 @@ These actions aren't the admin token permissions under Tokens. "MCP: browse the 
 
 The customer routes take the same session as the MCP tools: the access token oauth-mcp-manager issues for a customer's LINE sign-in. The routes set `auth: false`, so users-permissions doesn't refuse that token, and Maison's `customer-session` policy checks it instead:
 - It passes the `Authorization` header to `identity.customerSession`, the function behind the tools' `getCustomerSubject`.
-- That first checks the session with oauth-mcp-manager's `resolveAccessToken`, the check `/mcp` runs before any tool, and only then asks `resolveSubject` whose session it is. The tools skip the first step, because `/mcp` has already taken it.
+- That first runs `/mcp`'s session check, oauth-mcp-manager's `resolveAccessToken`, and only then asks `resolveSubject` whose session it is. The tools skip the first step, because `/mcp` has already run it on their request.
 - A LINE customer gets through, as `ctx.state.maisonCustomer`. The routes book and list for that customer only.
 - Anything else is a 401 with `WWW-Authenticate: Bearer`: no header or a malformed one, an unknown, expired, revoked or rotated session, a user who is no longer active, a staff session, an admin or API token, or a users-permissions JWT.
-- Without oauth-mcp-manager 1.1, it's a 503 that says customer sign-in isn't configured.
+- Without oauth-mcp-manager 1.1, it's a 503 `not_configured`, which says customer sign-in isn't configured.
+- If checking the session fails on the server, such as a database error, it's a 503 `temporarily_unavailable`, not a 401: the session may still be good.
 - It never logs a token, the admin key behind a session, or a full LINE user ID.
+
+`/mcp` goes further than that check in two ways:
+- **An expired admin token.** Strapi core also refuses a session whose admin token has expired (`checkExpiry`). The REST door accepts that session until the session itself expires: at most the session TTL, 1 hour, because oauth-mcp-manager issues no new session for an expired admin token. Closing this gap belongs in oauth-mcp-manager, with `resolveAccessToken` refusing an expired admin token, in a later release.
+- **The tool's permission.** Each tool also needs its own permission on that admin token, such as "MCP: request and view own appointments" for `request_appointment`. The REST door doesn't check it: the customer's session is enough.
 
 Send the session to the customer routes only. The catalog routes check tokens with Strapi's own content-API auth, which doesn't know LINE sessions and answers 401. A website on another origin also needs its origin in `strapi::cors`.
 
@@ -216,7 +226,7 @@ strapi.plugin('strapi-oauth-mcp-manager').service('oauth').resolveSubject(author
 
 Anything but `line:U` followed by 32 lowercase hex characters counts as not signed in. That includes plain admin tokens, staff sessions, and a missing oauth-mcp-manager. Staff tools and the board show customers masked, as in `line:U4af…88`, and never the full LINE user ID.
 
-The REST customer routes run the same lookup through the `customer-session` policy, after checking the session the way `/mcp` does (see [The customer session](#the-customer-session)).
+The REST customer routes run the same lookup through the `customer-session` policy, after running `/mcp`'s session check (see [The customer session](#the-customer-session)).
 
 The Content Manager doesn't show an appointment's `customer` field at all, in the list or the edit view. The Document Service still reads and writes it, and saving or publishing an appointment in the Content Manager leaves it as it was.
 
@@ -248,7 +258,7 @@ Point Claude Desktop at Strapi with the ops token and at LINE Bot MCP with a Mes
   - `strapi.plugin('maison').service('identity').getCustomerSubject(extra)` for the signed-in customer
   - `service('errors').toolError(code, message, hint)` for errors in the same shape
   - `service('catalog')` and `service('appointments')` for the same logic the tools use, including `listRequests` and `confirm`
-- **Your own routes:** guard a customer route with `config: { auth: false, policies: ['plugin::maison.customer-session'] }`, and read the customer from `ctx.state.maisonCustomer`. For an `Authorization` header anywhere else, `service('identity').customerSession(authorization)` checks the session the way `/mcp` does and answers `{ status: 'signed_in', subject }`, `{ status: 'signed_out' }` or `{ status: 'unavailable' }`.
+- **Your own routes:** guard a customer route with `config: { auth: false, policies: ['plugin::maison.customer-session'] }`, and read the customer from `ctx.state.maisonCustomer`. For an `Authorization` header anywhere else, `service('identity').customerSession(authorization)` always runs `/mcp`'s session check first. It answers `{ status: 'signed_in', subject }`, `{ status: 'signed_out' }`, `{ status: 'unavailable' }` when customer sign-in isn't installed, or `{ status: 'error' }` when checking failed on the server: answer that with a 503, not a 401.
 - **Fewer tools:** list them in `disabledTools`.
 
 ## Development

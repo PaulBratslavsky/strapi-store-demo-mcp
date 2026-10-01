@@ -10,22 +10,33 @@ import { fakeStrapi } from './fake-strapi';
 const contentApi = (routes as Record<string, any>)['content-api'];
 const route = (method: string, path: string) => contentApi.routes.find((r: any) => r.method === method && r.path === path);
 const CUSTOMER_SESSION = 'plugin::maison.customer-session';
+const CATALOG_PATHS = ['/collections', '/products', '/products/:slug', '/boutiques'];
 
 describe('content-API routes (served at /api/maison)', () => {
-  it('are the six REST routes, each on the controller action named after the tool it mirrors', () => {
+  it("are the six REST routes, the catalog's on Strapi's find and findOne actions", () => {
     expect(contentApi.type).toBe('content-api');
     expect(contentApi.routes.map((r: any) => [r.method, r.path, r.handler])).toEqual([
-      ['GET', '/collections', 'catalog.browseCollections'],
-      ['GET', '/products', 'catalog.searchProducts'],
-      ['GET', '/products/:slug', 'catalog.viewProduct'],
-      ['GET', '/boutiques', 'catalog.findBoutiques'],
+      ['GET', '/collections', 'collections.find'],
+      ['GET', '/products', 'products.find'],
+      ['GET', '/products/:slug', 'products.findOne'],
+      ['GET', '/boutiques', 'boutiques.find'],
       ['POST', '/appointments', 'customer.requestAppointment'],
       ['GET', '/my-appointments', 'customer.myAppointments'],
     ]);
   });
 
+  it('name each catalog action so that a read-only API token may call it', () => {
+    // Strapi's content-api-token strategy lets a read-only token through only to scopes ending in find or findOne.
+    // A route's scope is plugin::maison.<handler>.
+    const readOnlyMayCall = (scope: string) => scope.endsWith('find') || scope.endsWith('findOne');
+    for (const path of CATALOG_PATHS) {
+      const { handler } = route('GET', path);
+      expect(readOnlyMayCall(`plugin::maison.${handler}`), handler).toBe(true);
+    }
+  });
+
   it("leave the catalog to Strapi's role and API-token permissions", () => {
-    for (const path of ['/collections', '/products', '/products/:slug', '/boutiques']) {
+    for (const path of CATALOG_PATHS) {
       const { config } = route('GET', path);
       expect(config?.auth, path).toBeUndefined();
       expect(config?.policies, path).toBeUndefined();
