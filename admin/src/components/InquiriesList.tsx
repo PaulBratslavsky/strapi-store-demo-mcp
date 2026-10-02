@@ -9,12 +9,12 @@ import {
   FILTER_LABELS,
   LIST_LIMIT,
   quotaText,
+  type InquiriesSummary,
   type InquiryFilter,
   type Quota,
   type StaffInquiry,
 } from '../inquiries';
 import { startPolling } from '../poll';
-import { useInquiriesSummary } from '../useInquiriesSummary';
 import { useInquiryActions } from '../useInquiryActions';
 import { useMounted } from '../useMounted';
 import { ChangeLabelDialog } from './ChangeLabelDialog';
@@ -31,10 +31,23 @@ const EMPTY: Record<InquiryFilter, string> = {
   all: 'No inquiries yet.',
 };
 
-export const InquiriesList = ({ canReply, refreshKey }: { canReply: boolean; refreshKey: number }) => {
+export const InquiriesList = ({
+  canReply,
+  refreshKey,
+  summary,
+  summaryError,
+  onChange,
+}: {
+  canReply: boolean;
+  refreshKey: number;
+  /** The open counts for the cards, which the page polls: it shows them on the tab's label too. */
+  summary: InquiriesSummary | null;
+  summaryError: string | null;
+  /** Called after an action, so what shows the counts loads them again at once. */
+  onChange: () => void;
+}) => {
   const { get } = useFetchClient();
   const mounted = useMounted();
-  const { summary, loadError: summaryError, reload: reloadSummary } = useInquiriesSummary(refreshKey);
   const [filter, setFilter] = React.useState<InquiryFilter>(DEFAULT_FILTER);
   const [inquiries, setInquiries] = React.useState<StaffInquiry[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -81,8 +94,8 @@ export const InquiriesList = ({ canReply, refreshKey }: { canReply: boolean; ref
   /** After an action: the rows and the counts, which it changed, load again. */
   const afterAction = React.useCallback(async (): Promise<void> => {
     await load(); // load reports its own errors
-    reloadSummary();
-  }, [load, reloadSummary]);
+    onChange();
+  }, [load, onChange]);
   const { acting, run } = useInquiryActions(afterAction);
 
   const changeFilter = (value: InquiryFilter) => {

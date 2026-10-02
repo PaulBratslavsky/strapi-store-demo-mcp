@@ -145,6 +145,18 @@ export interface AnswerBody {
 export const answerBody = ({ text, addToKnowledge, category, title }: AnswerForm): AnswerBody =>
   addToKnowledge ? { text, addToKnowledge, category, title } : { text, addToKnowledge };
 
+/**
+ * What the Questions tab's number counts, and the query that asks for it: the Open filter, which lists the questions
+ * staff can still answer, open or taken.
+ */
+export const OPEN_QUESTIONS = { status: 'open' } as const;
+
+/** How many questions a GET /maison/questions answer holds, or null when it isn't a list of questions: the tab shows no number then. */
+export const countOfQuestions = (answer: unknown): number | null => {
+  const questions = (answer as { questions?: unknown } | null | undefined)?.questions;
+  return Array.isArray(questions) ? questions.length : null;
+};
+
 /** What POST …/notify and POST …/answer answer with a 200 (a `sent` ReplyOutcome on the server). */
 export interface SentReply {
   reference: string;

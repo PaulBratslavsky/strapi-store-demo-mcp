@@ -9,13 +9,15 @@ import {
   canAnswer,
   canLetThemKnow,
   canSendAnswer,
+  OPEN_QUESTIONS,
+  countOfQuestions,
   defaultTitle,
   replyNotice,
   statusLabel,
 } from '../../admin/src/questions';
 import { KNOWLEDGE_CATEGORIES, QUESTION_REASONS } from '../../server/src/constants';
 import { knowledgeTitleOf } from '../../server/src/domain/question-messages';
-import { answerInput } from '../../server/src/mcp/schemas';
+import { answerInput, questionsListInput } from '../../server/src/mcp/schemas';
 
 describe('statusLabel', () => {
   it('says Open for a question nobody has taken', () => {
@@ -291,5 +293,24 @@ describe("the notice a sent answer or Let them know shows", () => {
   it('is a success when warning is false or is not the true the server sends', () => {
     expect(replyNotice({ message: MESSAGE, warning: false })).toEqual({ type: 'success', message: MESSAGE });
     expect(replyNotice({ message: MESSAGE, warning: 'true' as unknown as boolean })).toEqual({ type: 'success', message: MESSAGE });
+  });
+});
+
+describe('the number of questions on the Questions tab', () => {
+  it('counts the rows of the list the route answers', () => {
+    expect(countOfQuestions({ questions: [{ reference: 'Q-4821' }, { reference: 'Q-4822' }] })).toBe(2);
+    expect(countOfQuestions({ questions: [] })).toBe(0);
+  });
+
+  it('is nothing for an answer that is not a list of questions, so the tab shows no number', () => {
+    for (const answer of [undefined, null, 'oops', 3, [], {}, { questions: 'many' }, { questions: null }, { error: { message: 'Forbidden' } }]) {
+      expect(countOfQuestions(answer), JSON.stringify(answer)).toBeNull();
+    }
+  });
+
+  // The Open filter lists the open and the taken questions (questions-ask.test.ts pins it): what staff still have to answer.
+  it('asks the route for the Open filter, which it takes', () => {
+    expect(OPEN_QUESTIONS).toEqual({ status: 'open' });
+    expect(questionsListInput.safeParse(OPEN_QUESTIONS).success).toBe(true);
   });
 });
