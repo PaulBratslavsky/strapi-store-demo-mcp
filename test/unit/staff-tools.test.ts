@@ -69,6 +69,7 @@ describe('confirm_appointment', () => {
     expect(confirmAppointmentTool.auth.policies).toEqual([{ action: 'plugin::maison.appointments.confirm' }]);
     expect(confirmAppointmentTool.description).toMatch(/Confirming also sends the customer their LINE confirmation, once/);
     expect(confirmAppointmentTool.description).toMatch(/confirmationSent in the answer says whether it went out/);
+    expect(confirmAppointmentTool.description).toMatch(/If it didn't, confirming again won't retry it: staff use Send again on the Maison board\./);
     expect(confirmAppointmentTool.description).not.toMatch(/sends nothing|ops agent/);
   });
 
