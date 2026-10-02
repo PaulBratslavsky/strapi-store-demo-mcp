@@ -64,7 +64,22 @@ describe('rankKnowledge', () => {
 
   it('returns at most four entries', () => {
     const many = Array.from({ length: 6 }, (_, index) => entry(`Leather note ${index}`));
-    expect(rankKnowledge(many, 'leather', 'en')).toHaveLength(MAX_RESULTS);
+    expect(rankKnowledge(many, 'leather', 'en')).toHaveLength(4);
+    expect(MAX_RESULTS).toBe(4);
+  });
+
+  it('puts entries that score the same in title order', () => {
+    const second = entry('Leather note B');
+    const first = entry('Leather note A');
+    expect(titles(rankKnowledge([second, first], 'leather', 'en'))).toEqual(['Leather note A', 'Leather note B']);
+  });
+
+  it("orders entries that score the same the way the search's language sorts titles, not the host's", () => {
+    // In Swedish Ä sorts after Z; in English it sorts with A.
+    const zebra = entry('Zebra leather');
+    const apple = entry('Äpple leather');
+    expect(titles(rankKnowledge([zebra, apple], 'leather', 'en'))).toEqual(['Äpple leather', 'Zebra leather']);
+    expect(titles(rankKnowledge([apple, zebra], 'leather', 'sv'))).toEqual(['Zebra leather', 'Äpple leather']);
   });
 
   it("with products, leaves out entries about other pieces, keeps general ones, and ranks the piece's own first", () => {

@@ -26,7 +26,7 @@ const STOPWORDS = new Set([
   'what', 'when', 'where', 'which', 'who', 'why', 'will', 'with', 'would', 'you', 'your',
   '何', 'ください', 'どのくらい', 'どれくらい', 'について',
 ]);
-const HIRAGANA_ONLY = /^[぀-ゟ]+$/u;
+const HIRAGANA_ONLY = /^[\u3040-\u309f]+$/u;
 
 /** NFKC folds full-width letters and digits, and case doesn't count. */
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase();
@@ -76,7 +76,7 @@ export const rankKnowledge = (entries: KnowledgeEntry[], query: string, locale: 
       return { entry, score: words > 0 && aboutAsked(entry) ? words + PRODUCT_BONUS : words };
     })
     .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score || a.entry.title.localeCompare(b.entry.title))
+    .sort((a, b) => b.score - a.score || a.entry.title.localeCompare(b.entry.title, locale))
     .slice(0, MAX_RESULTS)
     .map(({ entry }) => entry);
 };

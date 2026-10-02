@@ -48,6 +48,15 @@ describe('catalog.searchKnowledge', () => {
     expect(result.ok && result.value.entries[0].productSlugs).toEqual([]);
   });
 
+  it('searches an entry that has no keywords, and answers without a keywords field', async () => {
+    const withoutKeywords = { ...leather, documentId: 'k4', keywords: null };
+    const result = await catalogWith({ knowledge: { en: [withoutKeywords] } }).searchKnowledge('en', { query: 'leather' });
+    expect(result).toEqual({
+      ok: true,
+      value: { entries: [{ title: leather.title, answer: leather.answer, category: 'care', productSlugs: [] }] },
+    });
+  });
+
   it('answers an unknown or unpublished product with not_found and the search_products hint', async () => {
     const products = { en: [{ slug: 'cabin-case-55' }] };
     const result = await catalogWith({ knowledge: { en: [cabin] }, products }).searchKnowledge('en', {
@@ -55,6 +64,20 @@ describe('catalog.searchKnowledge', () => {
       productSlugs: ['cabin-case-55', 'no-such-piece'],
     });
     expect(result).toEqual({ ok: false, code: 'not_found', message: 'No published product "no-such-piece".', hint: 'Call search_products to find valid product slugs.' });
+  });
+
+  it('names every unknown product in the order given, in the plural', async () => {
+    const products = { en: [{ slug: 'cabin-case-55' }] };
+    const result = await catalogWith({ knowledge: { en: [cabin] }, products }).searchKnowledge('en', {
+      query: 'Will it fit?',
+      productSlugs: ['no-such-piece', 'another-missing-piece'],
+    });
+    expect(result).toEqual({
+      ok: false,
+      code: 'not_found',
+      message: 'No published products "no-such-piece", "another-missing-piece".',
+      hint: 'Call search_products to find valid product slugs.',
+    });
   });
 
   it('returns no entries for a question nothing matches', async () => {
