@@ -24,6 +24,7 @@ export const labelSystemPrompt = (): string =>
     SENTIMENT,
     "answered: true only if the concierge's reply actually answers what the customer asked.",
     'reason: one or two sentences on why, for staff. topic: one short phrase, such as "leather care" or "delivery time".',
+    'Write reason and topic in English, whatever language the customer wrote in.',
     'Call record_labels once.',
   ].join('\n');
 
@@ -34,13 +35,16 @@ export interface LabelInput {
   handedOff: boolean;
 }
 
+/** The customer's text, and a reply that quotes it, can't close the tags the model reads them in: a `<` before either tag's name becomes `&lt;`. */
+const fence = (text: string) => text.replace(/<\s*(\/?)\s*(customer_message|concierge_reply)/gi, '&lt;$1$2');
+
 export const labelUserMessage = ({ message, reply, knowledgeFound, handedOff }: LabelInput): string =>
   [
     '<customer_message>',
-    message,
+    fence(message),
     '</customer_message>',
     '<concierge_reply>',
-    reply || '(no reply)',
+    fence(reply) || '(no reply)',
     '</concierge_reply>',
     `Knowledge found: ${knowledgeFound ? 'yes' : 'no'}. Handed to staff: ${handedOff ? 'yes' : 'no'}.`,
   ].join('\n');

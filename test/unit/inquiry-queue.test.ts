@@ -21,6 +21,11 @@ describe('queueFor', () => {
     expect(queueFor({ handedOff: false, kind: 'question', answered: true })).toBe('none');
   });
 
+  // Only an explicit "not answered" puts a question in Needs an answer: a staff relabel of an unlabelled row has no `answered`.
+  it('keeps a question out of the queues while nobody has said whether it was answered', () => {
+    expect(queueFor({ handedOff: false, kind: 'question', answered: null })).toBe('none');
+  });
+
   it('sends a complaint to the complaint queue, answered or not', () => {
     for (const answered of ANSWERS) expect(queueFor({ handedOff: false, kind: 'complaint', answered }), `${answered}`).toBe('complaint');
   });
