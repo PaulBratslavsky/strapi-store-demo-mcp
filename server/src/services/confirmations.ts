@@ -1,11 +1,11 @@
 import type { Core } from '@strapi/strapi';
 
 import { getConfig } from '../config';
-import { UID } from '../constants';
+import { LOCALES, UID, type Locale } from '../constants';
 import { buildConfirmationMessage, type FlexMessage } from '../domain/flex-message';
 import { failure, type ServiceResult } from '../domain/service-result';
 import { lineUserIdOf, parseSubject } from '../domain/subject';
-import { formatJaDateTime, toZonedIso } from '../domain/time';
+import { formatEnDateTime, formatJaDateTime, toZonedIso } from '../domain/time';
 
 type Doc = Record<string, any>;
 export type Outcome = 'sent' | 'failed';
@@ -36,21 +36,33 @@ export type LineConfirmation = Omit<PendingConfirmation, 'reference' | 'previous
 export const CONFIRMATION_POPULATE = { boutique: { fields: ['name', 'address'] }, products: { fields: ['name'] } };
 
 /**
+ * The language a visit was booked in, which its confirmation is written in. Visits booked before appointments kept one
+ * have none: those are Japanese, as is any value that isn't a locale.
+ */
+export const visitLanguage = (appointment: Doc): Locale =>
+  (LOCALES as readonly unknown[]).includes(appointment.language) ? (appointment.language as Locale) : 'ja';
+
+/** A visit's date and time as each language writes it. */
+const DATE_TIME: Record<Locale, (date: Date, timeZone: string) => string> = { ja: formatJaDateTime, en: formatEnDateTime };
+
+/**
  * The LINE confirmation of a published appointment populated with CONFIRMATION_POPULATE: its recipient, its details
- * and its flex message. pending_confirmations lists it and Strapi sends it, so the two can't drift. null when the
+ * and its flex message, in the visit's language. It names the boutique and products as the appointment it's given
+ * does, and looks nothing up. pending_confirmations lists it and Strapi sends it, so the two can't drift. null when the
  * appointment has no valid LINE customer.
  */
 export const confirmationFor = (
   appointment: Doc,
-  { liffUrl, timezone, houseName }: { liffUrl: string; timezone: string; houseName: { ja: string } }
+  { liffUrl, timezone, houseName }: { liffUrl: string; timezone: string; houseName: Record<Locale, string> }
 ): LineConfirmation | null => {
   const subject = parseSubject(appointment.customer);
   if (!subject) return null;
+  const language = visitLanguage(appointment);
   const when = new Date(appointment.requestedFor);
   const appLink = `${liffUrl}/visits/${appointment.reference}`;
   const boutique = { name: appointment.boutique?.name ?? '', address: appointment.boutique?.address ?? '' };
   const products = ((appointment.products ?? []) as Doc[]).map((product) => ({ name: product.name as string }));
-  const requestedForText = formatJaDateTime(when, timezone);
+  const requestedForText = DATE_TIME[language](when, timezone);
   return {
     lineUserId: lineUserIdOf(subject),
     boutique,
@@ -59,7 +71,8 @@ export const confirmationFor = (
     products,
     appLink,
     message: buildConfirmationMessage({
-      houseName: houseName.ja,
+      language,
+      houseName: houseName[language],
       reference: appointment.reference,
       boutiqueName: boutique.name,
       boutiqueAddress: boutique.address,
