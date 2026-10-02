@@ -120,18 +120,15 @@ describe('inquiries, labelled by a model through the AI SDK', () => {
     line = await startLineStub();
     model = await startModelStub();
     strapi = await bootStrapi('inquiries', {
-      // The app's .env may hold a real AI_API_KEY, and the stand-in must never see it: no key, so the provider sends its placeholder.
+      // No aiApiKey: the harness leaves none, so the provider sends its placeholder and the stand-in never sees a real key.
       maisonConfig: {
         lineChannelAccessToken: TOKEN,
         lineApiBaseUrl: line.url,
         aiProvider: 'openai-compatible',
         aiModel: 'stand-in',
-        aiApiKey: null,
         aiBaseUrl: model.url,
       },
     });
-    // The harness's strapi.load() starts Strapi's cron, and the per-minute labelling job would race this suite's own sweeps.
-    strapi.cron.stop();
     inquiries = strapi.plugin('maison').service('inquiries');
     labelling = strapi.plugin('maison').service('labelling');
   });

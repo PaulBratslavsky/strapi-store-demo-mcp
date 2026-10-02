@@ -765,6 +765,23 @@ describe('inquiries.labelAgain', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  // The sweep never picks a row a person labelled, so putting it back to pending would look as if it worked and change nothing.
+  it.each(['failed', 'pending', 'skipped', 'analyzed'])('refuses a %s inquiry a person labelled, and writes nothing', async (analysisStatus) => {
+    const rows = [{ ...PENDING, analysisStatus, analysisAttempts: 5, humanCorrected: true, kind: 'other' }];
+    const { service, update, stored } = world({ rows });
+
+    const result = await service.labelAgain('inq-1');
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'not_failed',
+      message: "A person labelled this inquiry, so it isn't labelled again.",
+      hint: 'Use Change label to change its labels.',
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(stored[0]).toMatchObject({ analysisStatus, analysisAttempts: 5, humanCorrected: true });
+  });
+
   it('answers not_found for an ID no inquiry has, and writes nothing', async () => {
     const { service, update } = world({ rows: [FAILED] });
 

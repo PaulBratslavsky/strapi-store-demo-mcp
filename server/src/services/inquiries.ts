@@ -276,10 +276,16 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       });
     },
 
-    /** Label again: puts an inquiry the model failed on back to pending with no attempts, for the next sweep. Any other is `not_failed`. */
+    /**
+     * Label again: puts an inquiry the model failed on back to pending with no attempts, for the next sweep. Any other is
+     * `not_failed`, and so is one a person labelled: the sweep never picks it, so staff would see nothing happen.
+     */
     async labelAgain(documentId: string): Promise<ServiceResult<StaffInquiryView>> {
       const row = await findRow(documentId);
       if (!row) return notFound(documentId);
+      if (row.humanCorrected) {
+        return failure('not_failed', "A person labelled this inquiry, so it isn't labelled again.", 'Use Change label to change its labels.');
+      }
       if (row.analysisStatus !== 'failed') {
         return failure('not_failed', 'Only an inquiry the model failed to label can be labelled again.', 'Use Change label to set its labels yourself.');
       }

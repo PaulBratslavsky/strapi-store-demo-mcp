@@ -192,6 +192,22 @@ describe('labelling.label', () => {
     }
   });
 
+  // Some Claude models refuse a sampling parameter (temperature, top_p, top_k) and a disabled thinking mode, and the labels
+  // need none of them, so labelling sends neither.
+  it('sends no sampling or thinking options', async () => {
+    const model = modelAnswering(() => COMPLAINT);
+    const { service } = world({ model });
+
+    await service.label(EXCHANGE);
+
+    const [options] = vi.mocked(generateObject).mock.calls[0] as [Doc];
+    const [call] = model.doGenerateCalls as Doc[];
+    for (const name of ['temperature', 'topP', 'topK', 'reasoning', 'providerOptions']) {
+      expect(options, `generateObject was given ${name}`).not.toHaveProperty(name);
+      expect(call[name], `the model was given ${name}`).toBeUndefined();
+    }
+  });
+
   it('puts the criteria and the exchange in front of the model, and asks for JSON in the shape of the labels', async () => {
     const model = modelAnswering(() => COMPLAINT);
     const { service } = world({ model });
@@ -549,7 +565,10 @@ describe('labelling.sweep, a failure', () => {
     expect(strapi.log.warn).toHaveBeenCalledExactlyOnceWith(
       `[maison] Labelling inquiry inq-1 failed (attempt 1 of ${MAX_LABEL_ATTEMPTS}): 401: Incorrect API key provided: [key]. Check [key] at the console.`
     );
-    expect(JSON.stringify(strapi.log)).not.toContain(KEY);
+    // Every argument of every log call. JSON.stringify of the loggers themselves is `{}`, which would pass whatever was logged.
+    const logged = JSON.stringify(Object.values(strapi.log).flatMap((method: any) => method.mock.calls));
+    expect(logged).toContain('[key]');
+    expect(logged).not.toContain(KEY);
   });
 
   it('logs a failure that is not an Error as it is', async () => {

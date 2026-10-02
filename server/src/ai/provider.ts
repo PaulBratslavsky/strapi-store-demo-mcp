@@ -23,7 +23,15 @@ export interface AiSettings {
   aiBaseUrl: string | null;
 }
 
-/** Pulse's defaults: a valid model id per provider, so the first call after setting a key doesn't 404. */
+/**
+ * Pulse's defaults: a valid model id per provider, so the first call after setting a key doesn't 404. A wrong default is
+ * worse than no default: it fails at request time, far from the config that caused it.
+ *
+ * Haiku 4.5 for labelling, as Pulse has it for classification: chosen on instruction-following, not on price. Anthropic
+ * lists it as active (its deprecations page, October 2026), with a tentative retirement date of not sooner than
+ * October 15, 2026, and gives at least 60 days' notice before it retires a publicly released model. `aiModel`
+ * (AI_MODEL) switches to another model.
+ */
 export const DEFAULT_MODEL: Record<AiProvider, string> = {
   anthropic: 'claude-haiku-4-5-20251001',
   openai: 'gpt-5-mini',

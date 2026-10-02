@@ -24,7 +24,7 @@
     "sentimentScore": { "type": "float" },
     "sentimentLabel": { "type": "enumeration", "enum": ["positive", "neutral", "negative"] },
     "answered": { "type": "boolean" },
-    "reason": { "type": "string", "maxLength": 400 },
+    "reason": { "type": "text", "maxLength": 400 },
     "topic": { "type": "string", "maxLength": 80 },
     "analysisStatus": { "type": "enumeration", "enum": ["pending", "analyzed", "failed", "skipped"], "default": "pending" },
     "analysisAttempts": { "type": "integer", "default": 0 },
@@ -38,6 +38,6 @@
     "repliedAt": { "type": "datetime" },
     "repliedBy": { "type": "string", "maxLength": 100 },
     "lineOutcome": { "type": "enumeration", "enum": ["sent", "failed"] },
-    "lineDetail": { "type": "string", "maxLength": 500 }
+    "lineDetail": { "type": "text", "maxLength": 500 }
   }
 }
