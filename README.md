@@ -254,7 +254,9 @@ Strapi sends the customer the LINE confirmation when staff confirm a visit, whic
 - `confirm_appointment`, in the admin chat or from an MCP client
 - **Publish** on the appointment in the Content Manager
 
-Each of them publishes the appointment. Once that publish has gone through, Strapi pushes the visit's flex message to the customer with LINE's push API, `POST /v2/bot/message/push`. It's the message `pending_confirmations` lists for the visit, built by the same code. The publish waits for LINE's answer, 8 seconds at most, so the board's next refresh shows how it went. Sending never makes the publish fail.
+Each of them publishes the appointment. Once that publish has gone through, Strapi pushes the visit's flex message to the customer with LINE's push API, `POST /v2/bot/message/push`. It's the message `pending_confirmations` lists for the visit, built by the same code. Sending never makes the publish fail.
+- **Confirm and `confirm_appointment`** wait for LINE's answer, 8 seconds at most, so their answer and the board's next refresh show how it went.
+- **Publish in the Content Manager**, and its bulk Publish, run inside a database transaction. Strapi sends once that transaction commits, and the publish doesn't wait for LINE: the board shows the outcome on its next refresh. A publish that's rolled back sends nothing.
 
 Strapi records each attempt as a Maison notification, with `recordedBy` set to `strapi`:
 - **sent**, with LINE's answer. LINE also answers 200 for a customer it can't deliver to, such as one who has blocked the account, so `sent` means LINE took the message.

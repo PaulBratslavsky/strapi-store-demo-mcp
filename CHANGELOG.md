@@ -5,7 +5,7 @@
 ### Added
 
 - **Strapi sends the LINE confirmation itself, on every confirm path:** the board's Confirm, `confirm_appointment` in the admin chat or from an MCP client, and Publish in the Content Manager.
-  - Once a publish of an appointment has gone through, a document middleware pushes the visit's flex message with LINE's push API and waits for the answer, 8 seconds at most. A failed send never fails the publish. The new `line-confirmations` service sends it, with the message `pending_confirmations` lists, now built by one shared function.
+  - Once a publish of an appointment has gone through, a document middleware pushes the visit's flex message with LINE's push API and waits for the answer, 8 seconds at most. Inside a transaction, as the Content Manager's Publish runs, it sends once the transaction commits instead, without waiting, and a rolled-back publish sends nothing. A failed send never fails the publish. The new `line-confirmations` service sends it, with the message `pending_confirmations` lists, now built by one shared function.
   - Each attempt is recorded as a notification by `strapi`: sent, or failed with LINE's HTTP status and message. A visit gets one, so publishing again sends nothing. `confirmations.record()` takes an optional `recordedBy`, and still writes `ops-agent` without it.
   - New config: `lineChannelAccessToken`, from `LINE_CHANNEL_ACCESS_TOKEN`, and `lineApiBaseUrl`, `https://api.line.me` by default. Without a token, Strapi sends and records nothing, and logs a warning once.
   - **Send again** on the board, for confirmed requests not yet sent, through `POST /maison/appointments/:reference/notify`, gated like Confirm.

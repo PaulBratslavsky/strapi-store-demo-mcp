@@ -44,7 +44,7 @@ const publishedReferences = (result: unknown): string[] => {
   return [...new Set(entries.map((entry) => entry.reference).filter((reference): reference is string => typeof reference === 'string'))];
 };
 
-/** Sends each published appointment's LINE confirmation. Nothing here throws: a failure is logged, never passed on. */
+/** Sends each published appointment's LINE confirmation. A send that fails is logged, and the next one still goes. */
 const sendConfirmations = async (strapi: Core.Strapi, published: unknown) => {
   for (const reference of publishedReferences(published)) {
     try {
@@ -55,13 +55,25 @@ const sendConfirmations = async (strapi: Core.Strapi, published: unknown) => {
   }
 };
 
+/** The same, for after a publish: it never throws, not even at once, and never rejects. What fails is logged. */
+const sendConfirmationsSafely = (strapi: Core.Strapi, published: unknown): Promise<void> =>
+  sendConfirmations(strapi, published).catch((error) => {
+    strapi.log.error(`[maison] The LINE confirmations of a publish couldn't be sent: ${(error as Error)?.message ?? error}`);
+  });
+
 /**
  * Same rules for the admin and the tools: every create/update goes through the Document Service.
  *
  * And the same confirmation: publishing an appointment confirms the visit, whichever way it happens. That's the board's
- * Confirm, the admin chat and MCP clients (all through appointments.confirm), and Publish in the Content Manager. Once
- * the publish has gone through, Strapi sends the customer the LINE confirmation and waits for it, so the board's next
- * refresh shows how it went. The push's 8-second timeout bounds that wait. Sending never fails the publish.
+ * Confirm, the admin chat and MCP clients (all through appointments.confirm), and Publish in the Content Manager.
+ * - A publish of its own, as appointments.confirm makes it, has committed by the time `next()` resolves. Strapi then
+ *   sends the customer the LINE confirmation and waits for it, so the answer and the board's next refresh show how it
+ *   went. The push's 8-second timeout bounds that wait.
+ * - A publish inside someone else's transaction, as the Content Manager's Publish and bulk Publish make it, sends once
+ *   that transaction commits, without making it wait. A push can't be rolled back, so a rolled-back publish sends
+ *   nothing, and LINE's answer never holds the database (SQLite has one connection). The board shows the outcome on
+ *   its next refresh.
+ * Sending never fails the publish.
  */
 export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
   strapi.documents.use(async (ctx, next) => {
@@ -77,7 +89,16 @@ export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
   strapi.documents.use(async (ctx, next) => {
     if (ctx.uid !== UID.appointment || ctx.action !== 'publish') return next();
     const published = await next();
-    await sendConfirmations(strapi, published);
+    if (strapi.db.inTransaction()) {
+      await strapi.db.transaction(async ({ onCommit }) => {
+        // The caller's transaction runs this right after it commits, so it must never throw.
+        onCommit(() => {
+          void sendConfirmationsSafely(strapi, published);
+        });
+      });
+      return published;
+    }
+    await sendConfirmationsSafely(strapi, published);
     return published;
   });
 };

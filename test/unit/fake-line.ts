@@ -27,12 +27,15 @@ export const PUBLISHED: Doc = {
  * the notifications recorded so far. `record` stands in for confirmations.record and appends to them, so a second send
  * sees the first one. `sender` is the real line-confirmations service, also at services['line-confirmations'].
  * `call` runs a Document Service call through the middlewares registered with documents.use, as Strapi does.
+ * `strapi.db` says whether the call runs `inTransaction`; `commits` keeps what onCommit registered, for a test to run,
+ * as a commit would, or to drop, as a rollback does.
  */
 export const world = ({
   exists = true,
   published = PUBLISHED as Doc | null,
   sent = false,
   config = LINE_CONFIG as Record<string, unknown>,
+  inTransaction = false,
 } = {}) => {
   const notifications: Doc[] = sent ? [{ appointmentReference: 'APT-4821', outcome: 'sent' }] : [];
   const appointmentFindOne = vi.fn(async ({ documentId, status }: Doc) =>
@@ -68,6 +71,12 @@ export const world = ({
   });
   const services: Record<string, unknown> = { confirmations: { record } };
   const strapi = fakeStrapi({ documents, config, services });
+  const commits: Array<() => unknown> = [];
+  strapi.db = {
+    inTransaction: () => inTransaction,
+    transaction: async (callback: (params: { onCommit: (fn: () => unknown) => void }) => unknown) =>
+      callback({ onCommit: (fn) => void commits.push(fn) }),
+  };
   const sender = lineConfirmations({ strapi });
   services['line-confirmations'] = sender;
 
@@ -79,7 +88,7 @@ export const world = ({
     return next();
   };
 
-  return { strapi, record, sender, services, call, appointmentFindOne, appointmentFindMany };
+  return { strapi, record, sender, services, call, commits, appointmentFindOne, appointmentFindMany };
 };
 
 /** LINE's push endpoint as a stand-in for fetch, answering `status` with `body`. */

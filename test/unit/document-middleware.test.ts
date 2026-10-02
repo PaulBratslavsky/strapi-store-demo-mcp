@@ -92,6 +92,44 @@ describe('publishing an appointment', () => {
   });
 });
 
+describe("publishing an appointment inside someone else's transaction, as the Content Manager's Publish does", () => {
+  it('sends nothing until the transaction commits, then sends once', async () => {
+    const w = registered({ inTransaction: true });
+    expect(await publish(w)).toBe(PUBLISH_RESULT);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(w.record).not.toHaveBeenCalled();
+    expect(w.commits).toHaveLength(1);
+
+    w.commits.forEach((commit) => commit());
+    await vi.waitFor(() => expect(w.record).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(w.record).toHaveBeenCalledWith(expect.objectContaining({ reference: 'APT-4821', status: 'sent', recordedBy: 'strapi' }));
+  });
+
+  it('sends nothing when the transaction is rolled back', async () => {
+    const w = registered({ inTransaction: true });
+    await publish(w);
+    await new Promise((resolve) => setTimeout(resolve, 20)); // the commit never comes
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(w.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['rejects', async () => Promise.reject(new Error('database is down'))],
+    ['throws at once', () => {
+      throw new Error('database is down');
+    }],
+  ])('logs a send that %s after the commit, and the commit sees no error', async (_label, sendConfirmation) => {
+    const w = registered({ inTransaction: true });
+    w.services['line-confirmations'] = { sendConfirmation: vi.fn(sendConfirmation) };
+    await publish(w);
+    expect(w.strapi.log.error).not.toHaveBeenCalled(); // nothing was sent before the commit
+    expect(() => w.commits.forEach((commit) => commit())).not.toThrow();
+    await vi.waitFor(() => expect(w.strapi.log.error).toHaveBeenCalledOnce());
+    expect(w.strapi.log.error.mock.calls[0][0]).toMatch(/APT-4821.*database is down/);
+  });
+});
+
 describe('other Document Service calls', () => {
   it.each([
     ['publishing a product', UID.product, 'publish'],

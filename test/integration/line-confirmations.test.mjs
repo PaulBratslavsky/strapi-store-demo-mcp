@@ -11,6 +11,17 @@ const APPOINTMENT = 'plugin::maison.appointment';
 const NOTIFICATION = 'plugin::maison.notification';
 const SENT = { sentMessages: [{ id: '1', quoteToken: 'q' }] };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Polls `predicate` until it holds, and fails once `timeoutMs` has passed. */
+const waitFor = async (predicate, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await predicate())) {
+    if (Date.now() > deadline) throw new Error(`Still waiting after ${timeoutMs} ms`);
+    await sleep(50);
+  }
+};
+
 /** LINE's Messaging API on a free port of this machine: it keeps every request and answers as told, 200 by default. */
 const startLineStub = async () => {
   const requests = [];
@@ -108,12 +119,34 @@ describe('LINE confirmations sent by Strapi', () => {
     assert.equal(confirmed.value.appointment.confirmationSent, true, "confirm's answer already shows it as sent");
   });
 
-  it("publishing through the Document Service, in a transaction as the Content Manager's Publish does, does the same", async () => {
+  it("publishing inside a transaction, as the Content Manager's Publish does, sends once the transaction commits", async () => {
     const reference = await request(SUBJECT_B, '2026-10-10T15:00:00+09:00');
     const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
-    await strapi.db.transaction(() => strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId }));
+    await strapi.db.transaction(async () => {
+      await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
+      await sleep(300);
+      assert.equal(pushesFor(reference).length, 0, 'nothing is pushed before the commit');
+    });
+    await waitFor(async () => (await notificationsFor(reference)).length > 0, 9000);
     assertOnePush(reference, SUBJECT_B);
     await assertRecordedSent(reference);
+  });
+
+  it('a transaction that publishes and then fails sends nothing, and leaves the visit unconfirmed', async () => {
+    const reference = await request(SUBJECT_A, '2026-10-12T14:00:00+09:00');
+    const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
+    await assert.rejects(
+      strapi.db.transaction(async () => {
+        await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
+        throw new Error('rolled back on purpose');
+      }),
+      /rolled back on purpose/
+    );
+    await sleep(500);
+    assert.equal(pushesFor(reference).length, 0, 'no push');
+    assert.deepEqual(await notificationsFor(reference), [], 'no notification');
+    const published = await strapi.documents(APPOINTMENT).findFirst({ status: 'published', filters: { reference: { $eq: reference } } });
+    assert.equal(published, null, 'no published version');
   });
 
   it('publishing a confirmed visit again sends nothing new', async () => {
