@@ -218,6 +218,12 @@ export const changeLabelInput = z
   .object({ kind: z.enum(INQUIRY_KINDS).optional(), sentimentLabel: z.enum(SENTIMENT_LABELS).optional() })
   .refine((input) => input.kind !== undefined || input.sentimentLabel !== undefined, { message: 'Give a kind, a sentiment, or both.' });
 
+/**
+ * What staff send with Reply on LINE: the text for the customer, trimmed, of 1 to 2,000 characters, which is what the
+ * inquiry's `replyText` holds. There is no field for who replies: the signed-in admin does.
+ */
+export const replyInquiryInput = z.object({ text: z.string().trim().min(1).max(2000) });
+
 /** Zod issues on one line, e.g. `reference: Use a reference like APT-4821.` */
 export const describeIssues = (error: z.ZodError): string =>
   error.issues.map((issue) => `${issue.path.map(String).join('.') || 'input'}: ${issue.message}`).join('; ');

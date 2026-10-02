@@ -7,6 +7,9 @@ import { SUBJECT_A, bootStrapi } from './harness.mjs';
 const INQUIRY = 'plugin::maison.inquiry';
 const TOKEN = 'maison-test-channel-token';
 const SENT = { sentMessages: [{ id: '1', quoteToken: 'q' }] };
+/** What LINE says of this month's messages: how many were sent, and the most the channel may send. */
+const USAGE = { totalUsage: 12 };
+const QUOTA = { type: 'limited', value: 200 };
 
 const COMPLAINT = {
   kind: 'complaint',
@@ -30,22 +33,42 @@ const STRAP = 'The strap on my bag broke after a week.';
 const DELIVERY = 'Do you deliver to Osaka by Friday?';
 const ZIP = 'The zip of my coffret broke. Can someone call me about a repair?';
 const CLASP = 'The clasp of my trunk broke on the first day.';
+/** What staff send the customer who wrote CLASP: the text the page suggests for a complaint in English. */
+const APOLOGY =
+  "We're sorry about this, and thank you for telling us. A member of our team will look into it and reply in this chat with the next step.";
 
 /**
- * LINE's Messaging API on a free port of this machine. It answers a customer's profile with a display name and every
- * push with `SENT`. Nothing here reaches LINE, so nothing reaches a phone.
+ * LINE's Messaging API on a free port of this machine. It answers a customer's profile with a display name, the month's
+ * message total and limit as `USAGE` and `QUOTA`, and every push with `SENT`. It keeps every request, and `pushes()` is
+ * the pushes among them. Nothing here reaches LINE, so nothing reaches a phone.
  */
 const startLineStub = async () => {
+  const requests = [];
   const server = createServer((request, response) => {
-    request.resume();
+    let raw = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => (raw += chunk));
     request.on('end', () => {
-      const isProfile = request.method === 'GET' && request.url.startsWith('/v2/bot/profile/');
+      requests.push({ method: request.method, url: request.url, authorization: request.headers.authorization, body: raw ? JSON.parse(raw) : null });
+      const answer =
+        request.method === 'GET' && request.url.startsWith('/v2/bot/profile/')
+          ? { displayName: 'Paul (test)' }
+          : request.method === 'GET' && request.url === '/v2/bot/message/quota'
+            ? QUOTA
+            : request.method === 'GET' && request.url === '/v2/bot/message/quota/consumption'
+              ? USAGE
+              : SENT;
       response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify(isProfile ? { displayName: 'Paul (test)' } : SENT));
+      response.end(JSON.stringify(answer));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((resolve) => server.close(resolve)) };
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    requests,
+    pushes: () => requests.filter((request) => request.method === 'POST' && request.url === '/v2/bot/message/push'),
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
 };
 
 /** What the customer wrote, from the labelling prompt: it puts the message between <customer_message> tags. */
@@ -95,7 +118,7 @@ const startModelStub = async () => {
   };
 };
 
-describe('inquiries, labelled by a model through the AI SDK', () => {
+describe('inquiries, labelled by a model through the AI SDK and replied to on LINE', () => {
   let strapi;
   let line;
   let model;
@@ -271,5 +294,63 @@ describe('inquiries, labelled by a model through the AI SDK', () => {
     assert.equal(row.kind, 'complaint');
     assert.equal(row.reason ?? null, null, "the model's reason is not on a row it never labelled");
     assert.equal(model.requests.length, 3, 'the stand-in got nothing more');
+  });
+
+  it("Reply on LINE to the complaint pushes one message to the stand-in, with the spec's text, and records it", async () => {
+    const clasp = await stored(CLASP);
+    assert.equal(line.pushes().length, 0, 'nothing was pushed before the reply');
+
+    const outcome = await inquiries.reply(clasp.documentId, APOLOGY, 'Paul');
+
+    assert.deepEqual(outcome, { documentId: clasp.documentId, status: 'sent', message: 'Sent the reply on LINE.' });
+    assert.equal(line.pushes().length, 1);
+    const [push] = line.pushes();
+    assert.equal(push.authorization, `Bearer ${TOKEN}`);
+    assert.equal(push.body.to, SUBJECT_A.slice('line:'.length), 'the customer on the row, without the line: prefix');
+    assert.deepEqual(push.body.messages, [{ type: 'text', text: `About your question: "${CLASP}"\n\n${APOLOGY}\n\nMaison` }]);
+
+    const row = await stored(CLASP);
+    assert.equal(row.status, 'replied');
+    assert.equal(row.replyText, APOLOGY);
+    assert.equal(row.repliedBy, 'Paul');
+    assert.ok(row.repliedAt, 'it says when');
+    assert.equal(row.lineOutcome, 'sent');
+    // It has left Complaints, and the other counts are as they were.
+    assert.deepEqual(await inquiries.summary(), { needsAnswer: 2, complaint: 0, praise: 1, notLabelled: 0 });
+    const all = await listed('all');
+    assert.deepEqual(all.find((view) => view.message === CLASP).line, { outcome: 'sent', detail: null });
+  });
+
+  it('a second reply to it is refused with already_replied, and pushes nothing more', async () => {
+    const clasp = await stored(CLASP);
+
+    const outcome = await inquiries.reply(clasp.documentId, 'Another reply.', 'Paul');
+
+    assert.deepEqual(outcome, { documentId: clasp.documentId, status: 'already_replied', message: 'This inquiry has been replied to already.' });
+    assert.equal(line.pushes().length, 1);
+    assert.equal((await stored(CLASP)).replyText, APOLOGY);
+  });
+
+  it('a reply to the hand-off is refused with use_question, and pushes nothing: it is answered under Questions', async () => {
+    const handOff = await stored(ZIP);
+
+    const outcome = await inquiries.reply(handOff.documentId, 'We will call you.', 'Paul');
+
+    assert.deepEqual(outcome, { documentId: handOff.documentId, status: 'use_question', message: `Answer it under Questions (${reference}).` });
+    assert.equal(line.pushes().length, 1, 'still only the first reply');
+    const row = await stored(ZIP);
+    assert.equal(row.status, 'open');
+    assert.equal(row.replyText ?? null, null);
+  });
+
+  it("answers the month's LINE total and limit from the stand-in, asked with the token", async () => {
+    assert.deepEqual(await inquiries.quota(), { used: 12, limit: 200 });
+
+    const asked = line.requests.filter((request) => request.url.startsWith('/v2/bot/message/quota'));
+    assert.deepEqual(asked.map((request) => `${request.method} ${request.url}`).sort(), [
+      'GET /v2/bot/message/quota',
+      'GET /v2/bot/message/quota/consumption',
+    ]);
+    for (const request of asked) assert.equal(request.authorization, `Bearer ${TOKEN}`);
   });
 });

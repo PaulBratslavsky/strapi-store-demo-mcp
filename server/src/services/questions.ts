@@ -2,12 +2,12 @@ import type { Core } from '@strapi/strapi';
 
 import { getConfig } from '../config';
 import { MAX_OPEN_QUESTIONS, UID, type KnowledgeCategory, type Locale, type QuestionReason, type QuestionStatus } from '../constants';
+import { NO_TOKEN, lineDetailOf, reasonOf } from '../domain/line-outcome';
 import { getDisplayName, pushMessages } from '../domain/line-push';
 import { acknowledgementText, answerText, knowledgeTitleOf } from '../domain/question-messages';
 import { generateReference } from '../domain/reference';
 import { failure, type ServiceResult } from '../domain/service-result';
 import { lineUserIdOf, maskSubject } from '../domain/subject';
-import { fitUnits } from '../domain/text';
 import { isoOrNull } from '../domain/time';
 import { productNamed, rememberProductNames } from './product-names';
 
@@ -91,18 +91,8 @@ export interface Reply {
   title?: string;
 }
 
-const NO_TOKEN = "LINE_CHANNEL_ACCESS_TOKEN isn't set: Strapi can't message customers on LINE.";
-/** What a question's `lineDetail` holds, in UTF-16 units: its `maxLength`. */
-const DETAIL_LENGTH = 500;
-
 /** A question as two of them are compared: trimmed, with every run of whitespace as one space, in lower case. */
 const sameWordsAs = (question: string): string => question.replace(/\s+/g, ' ').trim().toLowerCase();
-
-/** `text` with every copy of the token taken out: nothing Strapi records, logs or shows staff may carry it. */
-const withoutToken = (text: string, token: string): string => text.split(token).join('[token]');
-
-/** What went wrong, from whatever was thrown, without the token. */
-const reasonOf = (error: unknown, token: string): string => withoutToken(String((error as Error | undefined)?.message ?? error), token);
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
   /** A published piece by slug, named in `language`, or in the default language when it has no version in that one. */
@@ -170,8 +160,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     const { lineApiBaseUrl } = getConfig(strapi);
     const { status, detail } = await pushMessages({ apiBaseUrl: lineApiBaseUrl, token }, lineUserIdOf(row.customer), [{ type: 'text', text }]);
     if (status === 'sent') return undefined;
-    // The token comes out before the cut, so a cut can't leave a piece of it behind.
-    const lineDetail = fitUnits(withoutToken(detail, token), DETAIL_LENGTH);
+    const lineDetail = lineDetailOf(detail, token);
     try {
       await updateQuestion(row, { lineOutcome: 'failed', lineDetail });
     } catch (error) {

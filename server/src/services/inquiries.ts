@@ -15,8 +15,11 @@ import {
   type SentimentLabel,
 } from '../constants';
 import { queueFor } from '../domain/inquiry-queue';
+import { inquiryReplyText } from '../domain/inquiry-replies';
+import { NO_TOKEN, lineDetailOf, reasonOf } from '../domain/line-outcome';
+import { getMonthlyUsage, pushMessages, type MonthlyUsage } from '../domain/line-push';
 import { failure, type ServiceResult } from '../domain/service-result';
-import { maskSubject } from '../domain/subject';
+import { lineUserIdOf, maskSubject } from '../domain/subject';
 import { fitLines } from '../domain/text';
 import { isoOrNull } from '../domain/time';
 import { productNamed, rememberProductNames } from './product-names';
@@ -82,6 +85,25 @@ export interface InquirySummary {
   notLabelled: number;
 }
 
+/**
+ * What became of Reply on LINE:
+ * - `sent`: LINE took the message, and the inquiry says so. With `warning`, recording it failed, and `message` says so.
+ * - `failed`: LINE refused it or didn't answer. The inquiry records why, and stays open.
+ * - `not_found`, `already_closed`, `already_replied`: nothing was sent.
+ * - `use_question`: the inquiry is a hand-off, which is answered under Questions. Nothing was sent.
+ * - `not_configured`: there's no channel access token. Nothing was sent or recorded.
+ */
+export type InquiryReplyStatus = 'sent' | 'not_found' | 'already_closed' | 'already_replied' | 'use_question' | 'failed' | 'not_configured';
+
+export interface InquiryReplyOutcome {
+  documentId: string;
+  status: InquiryReplyStatus;
+  /** What happened, in words staff can read. Never the token. */
+  message: string;
+  /** The customer has the reply, but recording it failed, and `message` says so: staff should read it, not just see a success. */
+  warning?: true;
+}
+
 /** What the inquiry's `message` and `reply` hold, in UTF-16 units: their `maxLength`. */
 const MESSAGE_LENGTH = 1000;
 const REPLY_LENGTH = 2000;
@@ -104,7 +126,12 @@ const FILTERS: Record<InquiryFilter, Doc> = {
 /** Whether a value, whatever it came as, is one of the filters. A name like `toString` isn't, though `FILTERS['toString']` is a function. */
 const isInquiryFilter = (value: unknown): value is InquiryFilter => (INQUIRY_FILTERS as readonly unknown[]).includes(value);
 
-const notFound = (documentId: string) => failure('not_found', `No inquiry "${documentId}".`, 'Reload the Inquiries tab: it may have been deleted.');
+/** What staff are told when a row can't take an action any more, by Close and by Reply on LINE alike. */
+const ALREADY_CLOSED = 'This inquiry is closed already.';
+const ALREADY_REPLIED = 'This inquiry has been replied to already.';
+
+const noInquiry = (documentId: string) => `No inquiry "${documentId}".`;
+const notFound = (documentId: string) => failure('not_found', noInquiry(documentId), 'Reload the Inquiries tab: it may have been deleted.');
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
   /** A published piece by slug, named in `language`, or in the default language when it has no version in that one. */
@@ -173,6 +200,55 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     await updateInquiry(row.documentId, data);
     const [view] = await viewsOf([{ ...row, ...data }]);
     return { ok: true, value: view };
+  };
+
+  /**
+   * The inquiry a reply is for, with the token to send it with, or the outcome that says why nothing can be sent: no
+   * such inquiry, a closed or a replied one, a hand-off (answered under Questions), or no token. The inquiry's own state
+   * comes before the token: it is what staff can see on the row, and a refusal never depends on the setup.
+   */
+  const readyToReply = async (documentId: string): Promise<{ row: Doc; token: string } | { refusal: InquiryReplyOutcome }> => {
+    const refuse = (status: InquiryReplyStatus, message: string) => ({ refusal: { documentId, status, message } });
+    const row = await findRow(documentId);
+    if (!row) return refuse('not_found', noInquiry(documentId));
+    if (row.status === 'closed') return refuse('already_closed', ALREADY_CLOSED);
+    if (row.status === 'replied') return refuse('already_replied', ALREADY_REPLIED);
+    if (row.questionReference) return refuse('use_question', `Answer it under Questions (${row.questionReference}).`);
+    const { lineChannelAccessToken: token } = getConfig(strapi);
+    if (!token) {
+      strapi.log.warn(`[maison] ${NO_TOKEN}`);
+      return refuse('not_configured', NO_TOKEN);
+    }
+    return { row, token };
+  };
+
+  /**
+   * Pushes `text` to the inquiry's customer. When LINE refuses it or doesn't answer, this records why on the inquiry,
+   * changes nothing else, and returns the `failed` outcome. When LINE takes it, it returns nothing.
+   */
+  const deliver = async (row: Doc, text: string, token: string): Promise<InquiryReplyOutcome | undefined> => {
+    const { lineApiBaseUrl } = getConfig(strapi);
+    const { status, detail } = await pushMessages({ apiBaseUrl: lineApiBaseUrl, token }, lineUserIdOf(row.customer), [{ type: 'text', text }]);
+    if (status === 'sent') return undefined;
+    const lineDetail = lineDetailOf(detail, token);
+    try {
+      await updateInquiry(row.documentId, { lineOutcome: 'failed', lineDetail });
+    } catch (error) {
+      // Nothing was sent, so this isn't dangerous: staff still hear that it failed, and why.
+      strapi.log.error(`[maison] The failed LINE reply to inquiry ${row.documentId} couldn't be recorded: ${reasonOf(error, token)}`);
+    }
+    strapi.log.warn(`[maison] The reply to inquiry ${row.documentId} wasn't sent. ${lineDetail}`);
+    return { documentId: row.documentId, status: 'failed', message: `The reply wasn't sent. ${lineDetail}` };
+  };
+
+  /**
+   * LINE took the reply, but the inquiry couldn't be updated, so the row still shows it as unsent and staff might send it
+   * again. The outcome is `sent`: the customer has it.
+   */
+  const sentUnrecorded = (documentId: string, error: unknown, token: string): InquiryReplyOutcome => {
+    const message = `Sent the reply on LINE, but recording it failed (${reasonOf(error, token)}). Don't send it again.`;
+    strapi.log.error(`[maison] Inquiry ${documentId}: ${message}`);
+    return { documentId, status: 'sent', message, warning: true };
   };
 
   return {
@@ -244,10 +320,10 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       const row = await findRow(documentId);
       if (!row) return notFound(documentId);
       if (row.status === 'closed') {
-        return failure('already_closed', 'This inquiry is closed already.', 'Reload the Inquiries tab to see where it stands.');
+        return failure('already_closed', ALREADY_CLOSED, 'Reload the Inquiries tab to see where it stands.');
       }
       if (row.status === 'replied') {
-        return failure('already_replied', 'This inquiry has been replied to already.', 'Reload the Inquiries tab to see the reply.');
+        return failure('already_replied', ALREADY_REPLIED, 'Reload the Inquiries tab to see the reply.');
       }
       return changed(row, { status: 'closed', closeReason: reason });
     },
@@ -290,6 +366,48 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         return failure('not_failed', 'Only an inquiry the model failed to label can be labelled again.', 'Use Change label to set its labels yourself.');
       }
       return changed(row, { analysisStatus: 'pending', analysisAttempts: 0 });
+    },
+
+    /**
+     * Reply on LINE: pushes the staff member's text to the customer as one LINE message, in the inquiry's language, and
+     * marks the inquiry replied, with the text, when, and by whom. `staffName` is the staff member's first name, recorded
+     * and never sent: the reply goes out as Maison's, and a null name is recorded as Maison. Only an open inquiry with no
+     * question: a closed or a replied one is refused, and a hand-off is answered under Questions (`use_question`), so
+     * nothing is sent twice or around the question's flow. A message LINE refuses is recorded as failed, with LINE's
+     * answer, and the inquiry stays open. `now` is only for tests. It defaults to the current time.
+     */
+    async reply(documentId: string, text: string, staffName: string | null, now: Date = new Date()): Promise<InquiryReplyOutcome> {
+      const ready = await readyToReply(documentId);
+      if ('refusal' in ready) return ready.refusal;
+      const { row, token } = ready;
+      const replyText = text.trim();
+
+      const failed = await deliver(row, inquiryReplyText({ language: row.language, message: row.message, text: replyText }), token);
+      if (failed) return failed;
+
+      try {
+        await updateInquiry(documentId, {
+          status: 'replied',
+          replyText,
+          repliedAt: now,
+          repliedBy: staffName ?? 'Maison',
+          lineOutcome: 'sent',
+          lineDetail: '',
+        });
+      } catch (error) {
+        return sentUnrecorded(documentId, error, token);
+      }
+      strapi.log.info(`[maison] Sent the reply to inquiry ${documentId} on LINE.`);
+      return { documentId, status: 'sent', message: 'Sent the reply on LINE.' };
+    },
+
+    /**
+     * This month's messages on Maison's LINE channel, for the Inquiries tab: replies count toward it, as confirmations do.
+     * Both are null without a channel access token, and when LINE gives no answer.
+     */
+    async quota(): Promise<MonthlyUsage> {
+      const { lineChannelAccessToken: token, lineApiBaseUrl } = getConfig(strapi);
+      return token ? getMonthlyUsage({ apiBaseUrl: lineApiBaseUrl, token }) : { used: null, limit: null };
     },
 
     /**

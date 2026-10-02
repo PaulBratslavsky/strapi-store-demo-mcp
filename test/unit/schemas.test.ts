@@ -11,6 +11,7 @@ import {
   isoDateTimeInput,
   logInquiryInput,
   questionOutput,
+  replyInquiryInput,
 } from '../../server/src/mcp/schemas';
 
 /** The messages a schema gives for a value; none when it's valid. */
@@ -369,5 +370,47 @@ describe('changeLabelInput', () => {
     const result = parse(value);
     expect(result.success).toBe(false);
     expect(result.error?.issues[0].path).toEqual([field]);
+  });
+});
+
+describe('replyInquiryInput', () => {
+  const parse = (value: Record<string, unknown>) => replyInquiryInput.safeParse(value);
+
+  it('takes the text, trimmed', () => {
+    expect(parse({ text: '  We are sorry.\n' }).data).toEqual({ text: 'We are sorry.' });
+  });
+
+  it('keeps the line breaks and the spaces inside the text', () => {
+    expect(parse({ text: 'Thank you.\n\n  We will call you.' }).data).toEqual({ text: 'Thank you.\n\n  We will call you.' });
+  });
+
+  it.each([1, 2000])('accepts a text of %i characters', (length) => {
+    expect(parse({ text: 'x'.repeat(length) }).success).toBe(true);
+  });
+
+  it('counts the text after trimming it: 2,000 characters between spaces are accepted', () => {
+    expect(parse({ text: ` ${'x'.repeat(2000)} ` }).data).toEqual({ text: 'x'.repeat(2000) });
+  });
+
+  it.each([
+    ['an empty text', ''],
+    ['a text of spaces and line breaks', '  \n '],
+    ['a text of 2,001 characters', 'x'.repeat(2001)],
+    ['a text that is not a string', 42],
+    ['a text that is null', null],
+  ])('refuses %s', (_label, text) => {
+    const result = parse({ text });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(['text']);
+  });
+
+  it('needs a text', () => {
+    const result = parse({});
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(['text']);
+  });
+
+  it('has no field for who replies: whatever an argument says about the staff member is dropped', () => {
+    expect(parse({ text: 'Thank you.', staffName: 'Mallory', repliedBy: 'Mallory', customer: 'line:Uaaa' }).data).toEqual({ text: 'Thank you.' });
   });
 });
