@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CLOSE_REASONS, INQUIRY_FILTERS, INQUIRY_KINDS, SENTIMENT_LABELS, UID } from '../../server/src/constants';
 import inquiries from '../../server/src/services/inquiries';
+import { matches } from './fake-filters';
 import { fakeStrapi } from './fake-strapi';
 
 type Doc = Record<string, any>;
@@ -131,14 +132,6 @@ interface WorldOptions {
   config?: Record<string, unknown>;
 }
 
-/** Whether a row meets the filters: only the two operators the service uses, on fields of the row itself. */
-const matches = (row: Doc, filters: Doc = {}): boolean =>
-  Object.entries(filters).every(([field, condition]: [string, any]) => {
-    if ('$eq' in condition) return row[field] === condition.$eq;
-    if ('$in' in condition) return condition.$in.includes(row[field]);
-    throw new Error(`These tests don't know the filter ${field}: ${JSON.stringify(condition)}`);
-  });
-
 /**
  * The Document Service as the inquiries service reads and writes it, as a small table. `findMany` and `count` keep the
  * rows that meet the filters they are given, `findOne` finds a row by its document ID, and `update` writes into the
@@ -187,6 +180,8 @@ const TABLE: Doc[] = [
   row('failed-1', { analysisStatus: 'failed', analysisAttempts: 5 }),
   row('pending-1'),
   row('skipped-1', { analysisStatus: 'skipped', humanCorrected: true, kind: 'other' }),
+  row('skipped-2', { analysisStatus: 'skipped' }),
+  row('corrected-1', { humanCorrected: true, kind: 'other' }),
   row('replied-1', { queue: 'complaint', kind: 'complaint', analysisStatus: 'analyzed', status: 'replied' }),
   row('closed-1', { queue: 'needs-answer', status: 'closed', closeReason: 'spam' }),
 ];
@@ -196,8 +191,9 @@ describe('inquiries.list, the filters', () => {
     ['needs-answer', ['answer-1', 'handoff-1']],
     ['complaint', ['complaint-1']],
     ['praise', ['praise-1']],
-    // Pending and failed, whatever the queue: a hand-off nobody has labelled is here too. A row a person labelled is not.
-    ['not-labelled', ['handoff-1', 'failed-1', 'pending-1']],
+    // Pending, skipped (AI was off) and failed, whatever the queue: a hand-off nobody has labelled is here too. A row a
+    // person labelled is not, whatever its status.
+    ['not-labelled', ['handoff-1', 'failed-1', 'pending-1', 'skipped-2']],
   ] as const)('%s shows the open rows in that queue, and no replied or closed one', async (filter, expected) => {
     const { service } = world({ rows: TABLE });
     expect(idsOf(await service.list({ filter }))).toEqual(expected);
@@ -483,7 +479,7 @@ describe('inquiries.list, the question of a hand-off', () => {
 describe('inquiries.summary', () => {
   it('counts the open rows in each queue, and the open rows nobody has labelled', async () => {
     const { service } = world({ rows: TABLE });
-    expect(await service.summary()).toEqual({ needsAnswer: 2, complaint: 1, praise: 1, notLabelled: 3 });
+    expect(await service.summary()).toEqual({ needsAnswer: 2, complaint: 1, praise: 1, notLabelled: 4 });
   });
 
   it('counts zero everywhere when there are no inquiries', async () => {
@@ -498,6 +494,11 @@ describe('inquiries.summary', () => {
       row(`${status}-pending`, { status }),
     ]);
     expect(await world({ rows }).service.summary()).toEqual({ needsAnswer: 0, complaint: 0, praise: 0, notLabelled: 0 });
+  });
+
+  it('counts a skipped row under Not labelled, and leaves out a row a person labelled', async () => {
+    const rows = [row('skipped-1', { analysisStatus: 'skipped' }), row('corrected-1', { humanCorrected: true, kind: 'other' })];
+    expect(await world({ rows }).service.summary()).toEqual({ needsAnswer: 0, complaint: 0, praise: 0, notLabelled: 1 });
   });
 
   it('counts a hand-off nobody has labelled under Needs an answer and under Not labelled', async () => {
@@ -697,22 +698,20 @@ describe('inquiries.changeLabel', () => {
   });
 
   describe('the analysis status', () => {
-    it.each([
-      ['pending', 'skipped'],
-      ['failed', 'skipped'],
-      ['analyzed', 'analyzed'],
-      ['skipped', 'skipped'],
-    ])('turns %s into %s: a person labelling a row before the model did leaves Not labelled', async (before, after) => {
-      const { service, stored } = world({ rows: [{ ...PENDING, analysisStatus: before, analysisAttempts: 2 }] });
+    // `skipped` says AI was off when the sweep saw the row, and only the sweep sets it: a person's label never changes it.
+    it.each(['pending', 'failed', 'analyzed', 'skipped'])('leaves a %s row as it was, with its attempts', async (analysisStatus) => {
+      const { service, stored, update } = world({ rows: [{ ...PENDING, analysisStatus, analysisAttempts: 2 }] });
 
       const result = await service.changeLabel('inq-1', { kind: 'other' });
 
-      expect(stored[0]).toMatchObject({ analysisStatus: after, analysisAttempts: 2 });
-      expect(result).toMatchObject({ ok: true, value: { analysisStatus: after, analysisAttempts: 2, humanCorrected: true } });
+      expect(update.mock.calls[0][0].data).not.toHaveProperty('analysisStatus');
+      expect(stored[0]).toMatchObject({ analysisStatus, analysisAttempts: 2, humanCorrected: true });
+      expect(result).toMatchObject({ ok: true, value: { analysisStatus, analysisAttempts: 2, humanCorrected: true } });
     });
 
-    it('leaves Not labelled for a row that was pending, so the filter no longer lists it', async () => {
-      const { service } = world({ rows: [PENDING] });
+    // The row is corrected by a person now, and the sweep never picks that.
+    it.each(['pending', 'failed', 'skipped'])('takes a %s row out of Not labelled', async (analysisStatus) => {
+      const { service } = world({ rows: [{ ...PENDING, analysisStatus }] });
       expect(idsOf(await service.list({ filter: 'not-labelled' }))).toEqual(['inq-1']);
 
       await service.changeLabel('inq-1', { kind: 'other' });

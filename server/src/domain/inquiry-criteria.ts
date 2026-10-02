@@ -25,7 +25,6 @@ export const labelSystemPrompt = (): string =>
     "answered: true only if the concierge's reply actually answers what the customer asked.",
     'reason: one or two sentences on why, for staff. topic: one short phrase, such as "leather care" or "delivery time".',
     'Write reason and topic in English, whatever language the customer wrote in.',
-    'Call record_labels once.',
   ].join('\n');
 
 export interface LabelInput {
@@ -58,21 +57,3 @@ export const labelsSchema = z.object({
   topic: z.string().trim().min(1).max(80),
 });
 export type Labels = z.infer<typeof labelsSchema>;
-
-/** The forced tool: its input schema is the label shape, so the answer is always structured. */
-export const LABEL_TOOL = {
-  name: 'record_labels',
-  description: 'Records the labels for this exchange.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      kind: { type: 'string', enum: [...INQUIRY_KINDS] },
-      sentimentScore: { type: 'number', minimum: -1, maximum: 1 },
-      sentimentLabel: { type: 'string', enum: [...SENTIMENT_LABELS] },
-      answered: { type: 'boolean' },
-      reason: { type: 'string', maxLength: 400 },
-      topic: { type: 'string', maxLength: 80 },
-    },
-    required: ['kind', 'sentimentScore', 'sentimentLabel', 'answered', 'reason', 'topic'],
-  },
-} as const;

@@ -89,14 +89,15 @@ const LIST_LIMIT = 50;
 
 /**
  * What each filter shows. Every one but All is open inquiries only: a replied or a closed one has left the queues.
- * Not labelled is an inquiry no model or person has labelled yet, or one the model failed on.
+ * Not labelled is an inquiry nobody has labelled yet: it is waiting for the sweep (pending), the sweep passed it over
+ * because AI was off (skipped), or the model failed on it (failed). One a person labelled is not, whatever its status.
  */
 const OPEN = { status: { $eq: 'open' } };
 const FILTERS: Record<InquiryFilter, Doc> = {
   'needs-answer': { ...OPEN, queue: { $eq: 'needs-answer' } },
   complaint: { ...OPEN, queue: { $eq: 'complaint' } },
   praise: { ...OPEN, queue: { $eq: 'praise' } },
-  'not-labelled': { ...OPEN, analysisStatus: { $in: ['pending', 'failed'] } },
+  'not-labelled': { ...OPEN, analysisStatus: { $in: ['pending', 'skipped', 'failed'] }, humanCorrected: { $ne: true } },
   all: {},
 };
 
@@ -253,10 +254,10 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
 
     /**
      * Change label: a person sets the kind, the sentiment, or both. The row is marked as corrected, so labelling never
-     * overwrites it, and its queue follows the new kind by the same rule the model's labels go through. A sentiment
-     * clears the model's score, since the person gave a label and no score; the reason and the topic stay as the model
-     * wrote them. A row nobody had labelled yet (pending, or failed) leaves Not labelled by becoming `skipped`, so the
-     * sweep never picks it.
+     * overwrites it and Not labelled no longer lists it, and its queue follows the new kind by the same rule the model's
+     * labels go through. A sentiment clears the model's score, since the person gave a label and no score; the reason and
+     * the topic stay as the model wrote them. The analysis status stays as it was: `skipped` says AI was off when the
+     * sweep saw the row, and only the sweep sets it.
      */
     async changeLabel(
       documentId: string,
@@ -267,13 +268,11 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       }
       const row = await findRow(documentId);
       if (!row) return notFound(documentId);
-      const unlabelled = row.analysisStatus === 'pending' || row.analysisStatus === 'failed';
       return changed(row, {
         ...(labels.kind !== undefined ? { kind: labels.kind } : {}),
         ...(labels.sentimentLabel !== undefined ? { sentimentLabel: labels.sentimentLabel, sentimentScore: null } : {}),
         humanCorrected: true,
         queue: queueFor({ handedOff: Boolean(row.handedOff), kind: labels.kind ?? row.kind ?? null, answered: row.answered ?? null }),
-        ...(unlabelled ? { analysisStatus: 'skipped' } : {}),
       });
     },
 

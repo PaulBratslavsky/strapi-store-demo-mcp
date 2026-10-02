@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { INQUIRY_KINDS, SENTIMENT_LABELS, type InquiryKind } from '../../server/src/constants';
+import { INQUIRY_KINDS, type InquiryKind } from '../../server/src/constants';
 import {
-  LABEL_TOOL,
   PROMPT_VERSION,
   labelSystemPrompt,
   labelUserMessage,
@@ -44,12 +43,13 @@ describe('the labelling prompt', () => {
     expect(prompt).toContain('topic: one short phrase, such as "leather care" or "delivery time".');
   });
 
-  it('asks for the reason and the topic in English, whatever language the customer wrote in', () => {
-    expect(prompt.split('\n')).toContain('Write reason and topic in English, whatever language the customer wrote in.');
+  it('asks for the reason and the topic in English, whatever language the customer wrote in, as its last line', () => {
+    expect(prompt.split('\n').at(-1)).toBe('Write reason and topic in English, whatever language the customer wrote in.');
   });
 
-  it("asks for the labels through the tool it forces, by that tool's name", () => {
-    expect(prompt).toContain(`Call ${LABEL_TOOL.name} once.`);
+  // The labels come back as a structured answer, which the AI SDK asks the model for, and not through a tool the prompt names.
+  it('names no tool to call', () => {
+    expect(prompt).not.toContain('record_labels');
   });
 });
 
@@ -176,32 +176,5 @@ describe('labelsSchema', () => {
   it.each(['kind', 'sentimentScore', 'sentimentLabel', 'answered', 'reason', 'topic'])('refuses labels with no %s', (field) => {
     const { [field]: _left, ...rest } = good as Record<string, unknown>;
     expect(labelsSchema.safeParse(rest).success).toBe(false);
-  });
-});
-
-describe('LABEL_TOOL', () => {
-  const { input_schema: inputSchema } = LABEL_TOOL;
-
-  it('is named record_labels, the tool the prompt asks for', () => {
-    expect(LABEL_TOOL.name).toBe('record_labels');
-  });
-
-  it('requires exactly the six labels', () => {
-    expect([...inputSchema.required].sort()).toEqual(['answered', 'kind', 'reason', 'sentimentLabel', 'sentimentScore', 'topic']);
-  });
-
-  it('describes the same labels labelsSchema checks, and no others', () => {
-    expect(Object.keys(inputSchema.properties).sort()).toEqual(Object.keys(labelsSchema.shape).sort());
-  });
-
-  it('takes the kinds and the sentiment labels from the constants', () => {
-    expect(inputSchema.properties.kind.enum).toEqual([...INQUIRY_KINDS]);
-    expect(inputSchema.properties.sentimentLabel.enum).toEqual([...SENTIMENT_LABELS]);
-  });
-
-  it('limits the score to -1 to 1, the reason to 400 characters and the topic to 80, as labelsSchema does', () => {
-    expect(inputSchema.properties.sentimentScore).toMatchObject({ type: 'number', minimum: -1, maximum: 1 });
-    expect(inputSchema.properties.reason).toMatchObject({ type: 'string', maxLength: 400 });
-    expect(inputSchema.properties.topic).toMatchObject({ type: 'string', maxLength: 80 });
   });
 });

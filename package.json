@@ -36,6 +36,7 @@
     "verify": "strapi-plugin verify",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:integration": "node --test --test-concurrency=1 \"test/integration/*.test.mjs\"",
     "test:mcp": "node --test --test-concurrency=1 \"test/mcp/*.test.mjs\"",
     "link": "npm run build && npx -y yalc@1.0.0-pre.53 push",

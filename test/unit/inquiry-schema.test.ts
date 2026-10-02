@@ -13,7 +13,7 @@ import {
   SENTIMENT_LABELS,
   UID,
 } from '../../server/src/constants';
-import { LABEL_TOOL, labelsSchema } from '../../server/src/domain/inquiry-criteria';
+import { labelsSchema } from '../../server/src/domain/inquiry-criteria';
 
 describe('the inquiry content type', () => {
   it('is registered as plugin::maison.inquiry', () => {
@@ -88,7 +88,5 @@ describe('the inquiry content type', () => {
     expect(accepts({ reason: 'r'.repeat(reason.maxLength), topic: 't'.repeat(topic.maxLength) })).toBe(true);
     expect(accepts({ reason: 'r'.repeat(reason.maxLength + 1), topic: 't' })).toBe(false);
     expect(accepts({ reason: 'r', topic: 't'.repeat(topic.maxLength + 1) })).toBe(false);
-    expect(LABEL_TOOL.input_schema.properties.reason.maxLength).toBe(reason.maxLength);
-    expect(LABEL_TOOL.input_schema.properties.topic.maxLength).toBe(topic.maxLength);
   });
 });
