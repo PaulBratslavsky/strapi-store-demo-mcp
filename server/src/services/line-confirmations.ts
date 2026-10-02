@@ -11,6 +11,8 @@ type Doc = Record<string, any>;
 /**
  * What became of a confirmation:
  * - `sent`: LINE took the message, and a `sent` notification records it.
+ * - `sent_unrecorded`: LINE took the message, but recording it failed. The board still shows the visit as not sent,
+ *   and sending again would deliver it twice.
  * - `failed`: LINE refused it or couldn't be reached, and a `failed` notification says why.
  * - `already_sent`: a `sent` notification already exists, so nothing was sent.
  * - `not_confirmed`: the visit has no published version, so nothing was sent.
@@ -18,7 +20,15 @@ type Doc = Record<string, any>;
  * - `not_found`: no appointment has this reference.
  * - `not_configured`: there's no channel access token, or no liffUrl for the message's link. Nothing was sent or recorded.
  */
-export type SendStatus = 'sent' | 'failed' | 'already_sent' | 'not_confirmed' | 'past' | 'not_found' | 'not_configured';
+export type SendStatus =
+  | 'sent'
+  | 'sent_unrecorded'
+  | 'failed'
+  | 'already_sent'
+  | 'not_confirmed'
+  | 'past'
+  | 'not_found'
+  | 'not_configured';
 
 export interface SendOutcome {
   reference: string;
@@ -84,18 +94,33 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return { reference, status: 'not_configured', message };
   };
 
-  /** Records a delivery outcome as Strapi's, with the token taken out of whatever the detail quotes, and logs it. */
+  /**
+   * Records a delivery outcome as Strapi's and logs it, with the token taken out of whatever the text quotes. It never
+   * throws: `sent` only once it's recorded, and `sent_unrecorded` when LINE took the message but recording it failed.
+   */
   const finish = async (reference: string, status: Outcome, detail: string, token: string): Promise<SendOutcome> => {
-    const safeDetail = detail.split(token).join('[token]');
-    const recorded = await strapi
-      .plugin(PLUGIN_ID)
-      .service('confirmations')
-      .record({ reference, status, detail: safeDetail, recordedBy: 'strapi' });
-    if (!recorded.ok) strapi.log.warn(`[maison] The LINE confirmation for ${reference} was ${status}, but recording that failed: ${recorded.message}`);
+    const redact = (text: string) => text.split(token).join('[token]');
+    const safeDetail = redact(detail);
+    let recordingFailed: string | null = null;
+    try {
+      const recorded = await strapi
+        .plugin(PLUGIN_ID)
+        .service('confirmations')
+        .record({ reference, status, detail: safeDetail, recordedBy: 'strapi' });
+      if (!recorded.ok) recordingFailed = redact(recorded.message);
+    } catch (error) {
+      recordingFailed = redact(String((error as Error | undefined)?.message ?? error));
+    }
+    if (status === 'sent' && recordingFailed !== null) {
+      const message = `Sent the LINE confirmation for ${reference}, but recording it failed (${recordingFailed}), so the board still shows it as not sent. Don't send it again.`;
+      strapi.log.error(`[maison] ${message}`);
+      return { reference, status: 'sent_unrecorded', message };
+    }
     if (status === 'sent') {
       strapi.log.info(`[maison] Sent the LINE confirmation for ${reference}.`);
       return { reference, status, message: `Sent the LINE confirmation for ${reference}.` };
     }
+    if (recordingFailed !== null) strapi.log.error(`[maison] The failed LINE confirmation for ${reference} couldn't be recorded: ${recordingFailed}`);
     const message = `The LINE confirmation for ${reference} wasn't sent. ${safeDetail}`;
     strapi.log.warn(`[maison] ${message}`);
     return { reference, status, message };

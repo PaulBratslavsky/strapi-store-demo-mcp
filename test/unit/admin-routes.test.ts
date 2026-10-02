@@ -152,7 +152,7 @@ describe('appointments controller', () => {
 });
 
 describe('Send again (notify)', () => {
-  it.each(['sent', 'already_sent'])('answers %s with a 200 and the outcome', async (status) => {
+  it.each(['sent', 'already_sent', 'sent_unrecorded'])('answers %s with a 200 and the outcome', async (status) => {
     const outcome = { reference: 'APT-4821', status, message: 'Sent the LINE confirmation for APT-4821.' };
     const sendConfirmation = vi.fn(async () => outcome);
     const ctx = fakeCtx({ params: { reference: 'APT-4821' } });

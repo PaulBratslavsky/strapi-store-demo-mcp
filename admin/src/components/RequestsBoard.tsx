@@ -17,7 +17,7 @@ import {
 } from '@strapi/design-system';
 import { useFetchClient, useNotification } from '@strapi/strapi/admin';
 
-import { canSendAgain, canStillConfirm } from '../board';
+import { canSendAgain, canStillConfirm, sendAgainNotice, type SendAgainStatus } from '../board';
 import { startPolling } from '../poll';
 
 type Status = 'requested' | 'confirmed' | 'all';
@@ -106,14 +106,8 @@ export const RequestsBoard = ({
   const sendAgain = async (reference: string) => {
     setNotifying(reference);
     try {
-      const { data } = await post<{ status: 'sent' | 'already_sent' }>(`/maison/appointments/${reference}/notify`);
-      toggleNotification({
-        type: 'success',
-        message:
-          data.status === 'already_sent'
-            ? `The LINE confirmation for ${reference} had already been sent.`
-            : `Sent the LINE confirmation for ${reference}.`,
-      });
+      const { data } = await post<{ status: SendAgainStatus }>(`/maison/appointments/${reference}/notify`);
+      toggleNotification(sendAgainNotice(reference, data.status));
       onChange?.();
     } catch (error) {
       // Why nothing went out, in the server's words: what LINE answered, or the setting that's missing.

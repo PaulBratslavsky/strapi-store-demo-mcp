@@ -276,6 +276,7 @@ On the board, a confirmed request whose LINE column says "not sent" has a **Send
 |---|---|
 | 200, with `status: "sent"` | LINE took the message |
 | 200, with `status: "already_sent"` | It had gone out already, so nothing was sent |
+| 200, with `status: "sent_unrecorded"` | LINE took the message, but recording it failed, so its row still says "not sent". Don't send it again |
 | 404 | No appointment has that reference |
 | 409 (`not_confirmed`) | The visit isn't confirmed |
 | 422 (`past`) | The visit is over, so it gets no confirmation |

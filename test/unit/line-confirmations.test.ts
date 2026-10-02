@@ -96,6 +96,28 @@ describe('sendConfirmation', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['answers not ok', async () => ({ ok: false, code: 'not_published', message: 'Not confirmed.', hint: 'None.' })],
+    ['throws', async () => Promise.reject(new Error('database is down'))],
+  ])('answers sent_unrecorded, logged as an error, when LINE took the message but recording it %s', async (_label, record) => {
+    const w = world();
+    w.services.confirmations = { record: vi.fn(record) };
+    const outcome = await w.sender.sendConfirmation('APT-4821');
+    expect(outcome.status).toBe('sent_unrecorded');
+    expect(outcome.message).toMatch(/Sent the LINE confirmation for APT-4821, but recording it failed/);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(w.strapi.log.error).toHaveBeenCalledOnce();
+    expect(w.strapi.log.info).not.toHaveBeenCalled();
+  });
+
+  it('answers failed, and never throws, when LINE refused the push and recording that threw', async () => {
+    useFetch(lineAnswers(400, { message: 'Bad request' }));
+    const w = world();
+    w.services.confirmations = { record: vi.fn(async () => Promise.reject(new Error('database is down'))) };
+    expect((await w.sender.sendConfirmation('APT-4821')).status).toBe('failed');
+    expect(w.strapi.log.error).toHaveBeenCalledOnce();
+  });
+
   it("records failed, with LINE's HTTP status and message, when LINE refuses the push", async () => {
     useFetch(lineAnswers(400, { message: "The property, 'to', in the request body is invalid (line 1, column 6)" }));
     const { sender, record } = world();

@@ -17,7 +17,7 @@ const fail = (ctx, { code, message, hint }: ServiceFailure) =>
  * 422 for one that's over, 502 when LINE refused or couldn't be reached, and 503 when Strapi has no token or liffUrl
  * to send with.
  */
-const NOTIFY_ERRORS: Record<Exclude<SendStatus, 'sent' | 'already_sent'>, string> = {
+const NOTIFY_ERRORS: Record<Exclude<SendStatus, 'sent' | 'sent_unrecorded' | 'already_sent'>, string> = {
   not_found: 'notFound',
   not_confirmed: 'conflict',
   past: 'unprocessableEntity',
@@ -52,14 +52,17 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     ctx.body = result.value;
   },
 
-  /** The board's Send again: a confirmed visit's LINE confirmation, if it hasn't gone out. Already sent is a 200 too. */
+  /**
+   * The board's Send again: a confirmed visit's LINE confirmation, if it hasn't gone out. Already sent is a 200 too, and
+   * so is sent_unrecorded: LINE took the message, and the board must say so, not report an error.
+   */
   async notify(ctx) {
     const reference = referenceInput.safeParse(ctx.params.reference);
     if (!reference.success) {
       return ctx.badRequest(describeIssues(reference.error), { code: 'invalid_input', hint: 'Use a reference like APT-4821.' });
     }
     const outcome: SendOutcome = await strapi.plugin('maison').service('line-confirmations').sendConfirmation(reference.data);
-    if (outcome.status === 'sent' || outcome.status === 'already_sent') {
+    if (outcome.status === 'sent' || outcome.status === 'sent_unrecorded' || outcome.status === 'already_sent') {
       ctx.body = outcome;
       return;
     }
