@@ -89,7 +89,8 @@ outside the failing test:
   inside Test 3 is fully explained by Test 1 leaving a dangling `product` link
   on the stock-level it created, not by a bug in this function.
 
-In other words: the six content types, `relationDocumentId`,
+In other words: the six content types checked here (product knowledge, the
+seventh, came later and has no relations), `relationDocumentId`,
 `registerDocumentMiddleware`, and `register.ts` all behave correctly. The one
 thing that does not hold up is Strapi's own promise that a relation pinned to a
 document's published version survives that document being republished.
