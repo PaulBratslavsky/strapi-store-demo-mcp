@@ -92,6 +92,40 @@ describe('publishing an appointment', () => {
   });
 });
 
+describe('a publish that answers without the reference', () => {
+  /** What publish() answers when it was asked for only some fields: the entry, without its reference. */
+  const withoutReference = async () => ({ documentId: 'doc-4821', entries: [{ id: 2, documentId: 'doc-4821' }] });
+
+  it('has the reference read from the published version, and sends', async () => {
+    const w = registered();
+    await publish(w, withoutReference);
+    expect(w.appointmentFindOne).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-4821', status: 'published', fields: ['reference'] })
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(w.record).toHaveBeenCalledWith(expect.objectContaining({ reference: 'APT-4821', status: 'sent' }));
+  });
+
+  it('logs a lookup that fails, and the publish still goes through', async () => {
+    const w = registered();
+    w.appointmentFindOne.mockRejectedValueOnce(new Error('database is down'));
+    expect(await publish(w, withoutReference)).toEqual(await withoutReference());
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(w.strapi.log.error).toHaveBeenCalledOnce();
+    expect(w.strapi.log.error.mock.calls[0][0]).toMatch(/database is down/);
+  });
+
+  it('logs a lookup that fails after the commit, and the commit sees no error', async () => {
+    const w = registered({ inTransaction: true });
+    w.appointmentFindOne.mockRejectedValueOnce(new Error('database is down'));
+    await publish(w, withoutReference);
+    expect(() => w.commits.forEach((commit) => commit())).not.toThrow();
+    await vi.waitFor(() => expect(w.strapi.log.error).toHaveBeenCalledOnce());
+    expect(w.strapi.log.error.mock.calls[0][0]).toMatch(/database is down/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("publishing an appointment inside someone else's transaction, as the Content Manager's Publish does", () => {
   it('sends nothing until the transaction commits, then sends once', async () => {
     const w = registered({ inTransaction: true });

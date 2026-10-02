@@ -38,15 +38,27 @@ const assertUniqueStockPair = async (strapi: Core.Strapi, data: Data) => {
   if (existing > 0) fail('A stock level for this product and boutique already exists; update it instead.');
 };
 
-/** The references of the appointments a publish published: one, as appointments aren't localized. */
-const publishedReferences = (result: unknown): string[] => {
-  const entries = ((result as { entries?: Data[] } | null)?.entries ?? []) as Data[];
-  return [...new Set(entries.map((entry) => entry.reference).filter((reference): reference is string => typeof reference === 'string'))];
+/**
+ * The references of the appointments a publish published: one, as appointments aren't localized. A publish asked
+ * for only some fields answers without the reference, so it's then read from the published version.
+ */
+const publishedReferences = async (strapi: Core.Strapi, published: unknown, documentId: unknown): Promise<string[]> => {
+  const entries = ((published as { entries?: Data[] } | null)?.entries ?? []) as Data[];
+  if (entries.length === 0) return [];
+  const references = entries.map((entry) => entry.reference).filter((reference): reference is string => typeof reference === 'string');
+  if (references.length > 0) return [...new Set(references)];
+  if (typeof documentId !== 'string') return [];
+  const appointment = (await strapi.documents(UID.appointment).findOne({
+    documentId,
+    status: 'published',
+    fields: ['reference'],
+  })) as Data | null;
+  return typeof appointment?.reference === 'string' ? [appointment.reference] : [];
 };
 
 /** Sends each published appointment's LINE confirmation. A send that fails is logged, and the next one still goes. */
-const sendConfirmations = async (strapi: Core.Strapi, published: unknown) => {
-  for (const reference of publishedReferences(published)) {
+const sendConfirmations = async (strapi: Core.Strapi, published: unknown, documentId: unknown) => {
+  for (const reference of await publishedReferences(strapi, published, documentId)) {
     try {
       await strapi.plugin(PLUGIN_ID).service('line-confirmations').sendConfirmation(reference);
     } catch (error) {
@@ -56,8 +68,8 @@ const sendConfirmations = async (strapi: Core.Strapi, published: unknown) => {
 };
 
 /** The same, for after a publish: it never throws, not even at once, and never rejects. What fails is logged. */
-const sendConfirmationsSafely = (strapi: Core.Strapi, published: unknown): Promise<void> =>
-  sendConfirmations(strapi, published).catch((error) => {
+const sendConfirmationsSafely = (strapi: Core.Strapi, published: unknown, documentId: unknown): Promise<void> =>
+  sendConfirmations(strapi, published, documentId).catch((error) => {
     strapi.log.error(`[maison] The LINE confirmations of a publish couldn't be sent: ${(error as Error)?.message ?? error}`);
   });
 
@@ -89,16 +101,17 @@ export const registerDocumentMiddleware = (strapi: Core.Strapi) => {
   strapi.documents.use(async (ctx, next) => {
     if (ctx.uid !== UID.appointment || ctx.action !== 'publish') return next();
     const published = await next();
+    const { documentId } = ctx.params as { documentId?: string };
     if (strapi.db.inTransaction()) {
       await strapi.db.transaction(async ({ onCommit }) => {
         // The caller's transaction runs this right after it commits, so it must never throw.
         onCommit(() => {
-          void sendConfirmationsSafely(strapi, published);
+          void sendConfirmationsSafely(strapi, published, documentId);
         });
       });
       return published;
     }
-    await sendConfirmationsSafely(strapi, published);
+    await sendConfirmationsSafely(strapi, published, documentId);
     return published;
   });
 };
