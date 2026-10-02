@@ -9,6 +9,29 @@ export interface BoardRow {
 /** Confirm: a request staff haven't confirmed, until its visit starts. */
 export const canStillConfirm = (row: BoardRow, now = Date.now()) => row.status === 'requested' && Date.parse(row.requestedFor) > now;
 
+/**
+ * Whether confirming sent the customer's LINE confirmation: confirm's answer says, or else the board's reloaded row.
+ * undefined when neither does, such as when the row has left the view on screen.
+ */
+export const sentAfterConfirm = (
+  answer: { appointment?: { confirmationSent?: unknown } } | undefined,
+  rows: ReadonlyArray<{ reference: string; confirmationSent: boolean }> | null,
+  reference: string
+): boolean | undefined => {
+  const fromAnswer = answer?.appointment?.confirmationSent;
+  if (typeof fromAnswer === 'boolean') return fromAnswer;
+  return rows?.find((row) => row.reference === reference)?.confirmationSent;
+};
+
+/**
+ * The notice Confirm shows. Not knowing counts as not sent: Send again answers already_sent for a confirmation that
+ * went out and was recorded.
+ */
+export const confirmedNotice = (reference: string, confirmationSent: boolean | undefined): { type: 'success' | 'warning'; message: string } =>
+  confirmationSent
+    ? { type: 'success', message: `Confirmed ${reference}. The customer's LINE confirmation was sent.` }
+    : { type: 'warning', message: `Confirmed ${reference}. The LINE confirmation wasn't sent; use Send again.` };
+
 /** What Send again's 200 answers say happened. */
 export type SendAgainStatus = 'sent' | 'already_sent' | 'sent_unrecorded';
 

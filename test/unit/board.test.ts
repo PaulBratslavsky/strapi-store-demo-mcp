@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendAgain, canStillConfirm, sendAgainNotice } from '../../admin/src/board';
+import { canSendAgain, canStillConfirm, confirmedNotice, sendAgainNotice, sentAfterConfirm } from '../../admin/src/board';
 
 const NOW = Date.parse('2026-10-05T00:00:00Z');
 const AHEAD = '2026-10-10T14:00:00+09:00';
@@ -47,5 +47,30 @@ describe('Confirm on the board', () => {
     expect(canStillConfirm(row({ status: 'requested' }), NOW)).toBe(true);
     expect(canStillConfirm(row({ status: 'requested', requestedFor: OVER }), NOW)).toBe(false);
     expect(canStillConfirm(row(), NOW)).toBe(false);
+  });
+});
+
+describe("Confirm's notice", () => {
+  it('says the confirmation was sent when it was', () => {
+    expect(confirmedNotice('APT-4821', true)).toEqual({
+      type: 'success',
+      message: "Confirmed APT-4821. The customer's LINE confirmation was sent.",
+    });
+  });
+
+  it.each([false, undefined])('points to Send again when it was not, or nothing says (%s)', (sent) => {
+    expect(confirmedNotice('APT-4821', sent)).toEqual({
+      type: 'warning',
+      message: "Confirmed APT-4821. The LINE confirmation wasn't sent; use Send again.",
+    });
+  });
+
+  it("reads whether it was sent from confirm's answer, and from the reloaded row when the answer doesn't say", () => {
+    const rows = [{ reference: 'APT-4821', confirmationSent: true }];
+    expect(sentAfterConfirm({ appointment: { confirmationSent: false } }, rows, 'APT-4821')).toBe(false);
+    expect(sentAfterConfirm({ appointment: { confirmationSent: true } }, null, 'APT-4821')).toBe(true);
+    expect(sentAfterConfirm({}, rows, 'APT-4821')).toBe(true);
+    expect(sentAfterConfirm(undefined, [], 'APT-4821')).toBeUndefined();
+    expect(sentAfterConfirm({}, null, 'APT-4821')).toBeUndefined();
   });
 });
