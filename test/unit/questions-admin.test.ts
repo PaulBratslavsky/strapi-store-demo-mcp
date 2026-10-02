@@ -275,7 +275,17 @@ describe("the notice a sent answer or Let them know shows", () => {
 
   it('is a warning, with the server’s own words, when the server says so: the customer has the message, but something went wrong after it', () => {
     const message = "Sent the LINE message for Q-4821, but recording it failed (database is locked). Don't send it again.";
-    expect(replyNotice({ message, warning: true })).toEqual({ type: 'warning', message });
+    expect(replyNotice({ message, warning: true })).toEqual({ type: 'warning', message, blockTransition: true });
+  });
+
+  // "Don't send it again" has to be read. A notice that fades after a few seconds can be missed, and the message sent twice.
+  it('stays on screen until it is dismissed, for a warning', () => {
+    expect(replyNotice({ message: 'Sent it, but recording it failed. Don\'t send it again.', warning: true }).blockTransition).toBe(true);
+  });
+
+  it('fades as any notice does, for a success', () => {
+    expect(replyNotice({ message: MESSAGE })).not.toHaveProperty('blockTransition');
+    expect(replyNotice({ message: MESSAGE, warning: false })).not.toHaveProperty('blockTransition');
   });
 
   it('is a success when warning is false or is not the true the server sends', () => {

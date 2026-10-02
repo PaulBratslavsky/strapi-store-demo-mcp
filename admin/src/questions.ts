@@ -157,8 +157,16 @@ export interface SentReply {
   knowledgeDocumentId?: string;
 }
 
-/** The notice a 200 shows: the server's own message, as a warning when it says the message went out but something after it went wrong. */
-export const replyNotice = ({ message, warning }: { message: string; warning?: boolean }): { type: 'success' | 'warning'; message: string } => ({
-  type: warning === true ? 'warning' : 'success',
+/**
+ * The notice a 200 shows: the server's own message, as a warning when it says the message went out but something after
+ * it went wrong. A warning stays until it is dismissed (`blockTransition`): it says "Don't send it again", which has to
+ * be read, and a notice that fades after a few seconds can be missed. A success fades as any notice does.
+ */
+export const replyNotice = ({
   message,
-});
+  warning,
+}: {
+  message: string;
+  warning?: boolean;
+}): { type: 'success' | 'warning'; message: string; blockTransition?: true } =>
+  warning === true ? { type: 'warning', message, blockTransition: true } : { type: 'success', message };

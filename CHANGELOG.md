@@ -52,6 +52,7 @@
 
 ### Changed
 
+- The warning notice that Let them know, Answer and Reply on LINE show when the customer has the message but something after it went wrong ("…Don't send it again.") stays on screen until it is dismissed, instead of fading after a few seconds. A success still fades.
 - Answering a customer question marks the inquiries its hand-off came from as replied, with the answer, when, and by whom. A failure to mark them never changes the outcome of the answer: the customer has it, and the server logs a warning.
 - `request_appointment` takes an optional `locale` (`ja` or `en`), like the other customer tools, and names the boutique and products in its answer in that language. Until now it always answered in `defaultLocale`, which is still the default. The booking body of `POST /api/maison/appointments` takes it too.
 - The customer tools' input schemas live in `server/src/mcp/schemas.ts`, shared with the REST routes. Apart from `request_appointment`'s `locale`, the tools' inputs, outputs and errors are unchanged.
