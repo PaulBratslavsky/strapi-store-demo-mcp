@@ -4,7 +4,7 @@ import { getConfig } from '../config';
 import { PLUGIN_ID, UID } from '../constants';
 import type { FlexMessage } from '../domain/flex-message';
 import { toZonedIso } from '../domain/time';
-import { CONFIRMATION_POPULATE, confirmationFor, type Outcome } from './confirmations';
+import { CONFIRMATION_POPULATE, confirmationFor, inVisitLanguage, type Outcome } from './confirmations';
 
 type Doc = Record<string, any>;
 
@@ -166,7 +166,9 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     if (!token) return notConfigured(reference, NO_TOKEN);
     if (!liffUrl) return notConfigured(reference, NO_LIFF_URL);
 
-    const confirmation = confirmationFor(published, { liffUrl, timezone, houseName });
+    // In the visit's language, with the names pending_confirmations uses too.
+    const [visit] = await inVisitLanguage(strapi, [published]);
+    const confirmation = confirmationFor(visit, { liffUrl, timezone, houseName });
     if (!confirmation) return finish(reference, 'failed', "The appointment has no valid LINE customer, so it can't be confirmed over LINE.", token);
     const { status, detail } = await push({ apiBaseUrl: lineApiBaseUrl, token }, confirmation.lineUserId, confirmation.message);
     return finish(reference, status, detail, token);
