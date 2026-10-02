@@ -2,16 +2,22 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 
-import { SUBJECT_A, SUBJECT_B, bootStrapi } from './harness.mjs';
+import { SUBJECT_A, SUBJECT_B, bootStrapi, tokyoDate, tokyoTime } from './harness.mjs';
 
 const LIFF_URL = 'https://liff.line.me/1234567890-AbCdEfGh';
 const TOKEN = 'maison-test-channel-token';
-const NOW = new Date('2026-10-01T00:00:00Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
 const APPOINTMENT = 'plugin::maison.appointment';
 const NOTIFICATION = 'plugin::maison.notification';
 const SENT = { sentMessages: [{ id: '1', quoteToken: 'q' }] };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A visit `days` from today at `time` (HH:MM) in Tokyo. Strapi sends no confirmation for a visit that's over, by the
+ * real clock, so the suite books against it and never expires. Ginza is open 11:00–20:00 every day.
+ */
+const visit = (days, time) => tokyoTime(tokyoDate(days), time);
 
 /** Polls `predicate` until it holds, and fails once `timeoutMs` has passed. */
 const waitFor = async (predicate, timeoutMs) => {
@@ -57,10 +63,10 @@ describe('LINE confirmations sent by Strapi', () => {
   let strapi;
   let line;
 
-  /** A customer's request for `requestedFor` at Ginza, as of NOW. Returns its reference. */
-  const request = async (subject, requestedFor) => {
+  /** A customer's request for `requestedFor` at Ginza, made at `now` (the current time by default). Returns its reference. */
+  const request = async (subject, requestedFor, now = new Date()) => {
     const result = await strapi.plugin('maison').service('appointments').request({
-      subject, boutique: 'ginza', productSlugs: ['weekender-50'], requestedFor, createdVia: 'app', now: NOW,
+      subject, boutique: 'ginza', productSlugs: ['weekender-50'], requestedFor, createdVia: 'app', now,
     });
     assert.equal(result.ok, true, JSON.stringify(result));
     return result.value.reference;
@@ -111,8 +117,8 @@ describe('LINE confirmations sent by Strapi', () => {
   });
 
   it("confirming through the service pushes the customer one flex message, and records it as sent before it answers", async () => {
-    const reference = await request(SUBJECT_A, '2026-10-10T14:00:00+09:00');
-    const confirmed = await strapi.plugin('maison').service('appointments').confirm(reference, NOW);
+    const reference = await request(SUBJECT_A, visit(10, '14:00'));
+    const confirmed = await strapi.plugin('maison').service('appointments').confirm(reference);
     assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
     assertOnePush(reference, SUBJECT_A);
     await assertRecordedSent(reference);
@@ -120,7 +126,7 @@ describe('LINE confirmations sent by Strapi', () => {
   });
 
   it("publishing inside a transaction, as the Content Manager's Publish does, sends once the transaction commits", async () => {
-    const reference = await request(SUBJECT_B, '2026-10-10T15:00:00+09:00');
+    const reference = await request(SUBJECT_B, visit(10, '15:00'));
     const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
     await strapi.db.transaction(async () => {
       await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
@@ -133,7 +139,7 @@ describe('LINE confirmations sent by Strapi', () => {
   });
 
   it('a transaction that publishes and then fails sends nothing, and leaves the visit unconfirmed', async () => {
-    const reference = await request(SUBJECT_A, '2026-10-12T14:00:00+09:00');
+    const reference = await request(SUBJECT_A, visit(12, '14:00'));
     const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
     await assert.rejects(
       strapi.db.transaction(async () => {
@@ -150,7 +156,7 @@ describe('LINE confirmations sent by Strapi', () => {
   });
 
   it('publishing a confirmed visit again sends nothing new', async () => {
-    const reference = await request(SUBJECT_A, '2026-10-11T14:00:00+09:00');
+    const reference = await request(SUBJECT_A, visit(11, '14:00'));
     const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
     await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
     await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
@@ -158,11 +164,21 @@ describe('LINE confirmations sent by Strapi', () => {
     await assertRecordedSent(reference);
   });
 
+  it('publishing a visit that is over, as the Content Manager can, sends nothing', async () => {
+    // Requested three days ago for two days ago, when it was still ahead.
+    const reference = await request(SUBJECT_B, visit(-2, '14:00'), new Date(Date.now() - 3 * DAY_MS));
+    const draft = await strapi.documents(APPOINTMENT).findFirst({ status: 'draft', filters: { reference: { $eq: reference } } });
+    await strapi.documents(APPOINTMENT).publish({ documentId: draft.documentId });
+    assert.equal(pushesFor(reference).length, 0, 'no push');
+    assert.deepEqual(await notificationsFor(reference), [], 'no notification');
+    assert.equal((await strapi.plugin('maison').service('line-confirmations').sendConfirmation(reference)).status, 'past');
+  });
+
   it('records a refused push as failed, and Send again then delivers it once', async () => {
-    const reference = await request(SUBJECT_B, '2026-10-11T15:00:00+09:00');
+    const reference = await request(SUBJECT_B, visit(11, '15:00'));
     line.answerWith(400, { message: "The property, 'to', in the request body is invalid (line 1, column 6)" });
     try {
-      assert.equal((await strapi.plugin('maison').service('appointments').confirm(reference, NOW)).ok, true);
+      assert.equal((await strapi.plugin('maison').service('appointments').confirm(reference)).ok, true);
     } finally {
       line.answerWith(200, SENT);
     }

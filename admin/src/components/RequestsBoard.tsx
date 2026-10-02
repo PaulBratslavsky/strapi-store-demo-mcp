@@ -17,6 +17,7 @@ import {
 } from '@strapi/design-system';
 import { useFetchClient, useNotification } from '@strapi/strapi/admin';
 
+import { canSendAgain, canStillConfirm } from '../board';
 import { startPolling } from '../poll';
 
 type Status = 'requested' | 'confirmed' | 'all';
@@ -46,10 +47,6 @@ const EMPTY: Record<Status, string> = {
 
 /** "2026-10-10T14:00:00+09:00" → "2026-10-10 14:00": the boutique's own time, whatever the browser's time zone. */
 const visitTime = (iso: string) => iso.slice(0, 16).replace('T', ' ');
-const canStillConfirm = (appointment: StaffAppointment) =>
-  appointment.status === 'requested' && Date.parse(appointment.requestedFor) > Date.now();
-/** A confirmed visit whose LINE column says "not sent". */
-const canSendAgain = (appointment: StaffAppointment) => appointment.status === 'confirmed' && !appointment.confirmationSent;
 
 export const RequestsBoard = ({
   canConfirm,

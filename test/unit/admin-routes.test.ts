@@ -5,7 +5,14 @@ import routes from '../../server/src/routes';
 import { fakeStrapi } from './fake-strapi';
 
 /** Strapi's error helpers on a Koa context, such as ctx.badRequest, and the status each one sets. */
-const ERROR_HELPERS = { badRequest: 400, notFound: 404, conflict: 409, badGateway: 502, serviceUnavailable: 503 };
+const ERROR_HELPERS = {
+  badRequest: 400,
+  notFound: 404,
+  conflict: 409,
+  unprocessableEntity: 422,
+  badGateway: 502,
+  serviceUnavailable: 503,
+};
 
 /** Enough of a Koa context: each of Strapi's error helpers sets its status and an error body. */
 const fakeCtx = (overrides: Record<string, unknown> = {}) => {
@@ -158,6 +165,7 @@ describe('Send again (notify)', () => {
   it.each([
     ['not_found', 404],
     ['not_confirmed', 409],
+    ['past', 422],
     ['failed', 502],
     ['not_configured', 503],
   ])('answers %s with %i and its message, for the board to show', async (status, httpStatus) => {

@@ -17,7 +17,7 @@ export const PUBLISHED: Doc = {
   documentId: 'doc-4821',
   reference: 'APT-4821',
   customer: `line:${LINE_USER_ID}`,
-  requestedFor: '2026-10-10T05:00:00.000Z', // 14:00 in Tokyo
+  requestedFor: '2030-01-12T05:00:00.000Z', // 14:00 in Tokyo, far enough ahead that no test runs after it
   boutique: { name: '銀座本店', address: '東京都中央区銀座 1-2-3（デモ）' },
   products: [{ name: 'ウィークエンダー 50' }, { name: 'パスポートカバー' }],
 };

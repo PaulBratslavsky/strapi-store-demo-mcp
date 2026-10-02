@@ -206,7 +206,7 @@ Each tool is offered only to admins whose role holds its permission. The custome
 ## The admin page
 
 **Maison** in the admin menu is shown to admins with "MCP: review appointment requests" or "Load and reset demo data":
-- **Appointment requests:** the Homepage widget's three cards (waiting for staff, confirmed and upcoming, LINE sent), then a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Each row shows the customer's note. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead, and the cards update as soon as they confirm. They also get **Send again** on confirmed requests whose LINE column says "not sent" ([Send again](#send-again)).
+- **Appointment requests:** the Homepage widget's three cards (waiting for staff, confirmed and upcoming, LINE sent), then a board that refreshes every 5 seconds. You can filter it to requests waiting for staff, confirmed ones, or all. Each row shows the customer's note. Admins with "MCP: confirm appointment requests" get a **Confirm** button on requests whose visit is still ahead, and the cards update as soon as they confirm. They also get **Send again** on confirmed requests whose LINE column says "not sent", until the visit is over ([Send again](#send-again)).
 - **Demo data:** **Load demo catalog** and **Reset demo appointments**.
 
 ## The Homepage widget
@@ -262,7 +262,7 @@ Strapi records each attempt as a Maison notification, with `recordedBy` set to `
 - **sent**, with LINE's answer. LINE also answers 200 for a customer it can't deliver to, such as one who has blocked the account, so `sent` means LINE took the message.
 - **failed**, with LINE's HTTP status and its message, or why LINE couldn't be reached
 
-A visit gets one confirmation. Once a `sent` notification exists for it, Strapi sends nothing more, so publishing a confirmed visit again sends nothing.
+A visit gets one confirmation. Once a `sent` notification exists for it, Strapi sends nothing more, so publishing a confirmed visit again sends nothing. A visit that's over gets none, as `pending_confirmations` lists none, even when the Content Manager publishes it.
 
 Two sends for the same visit at the same moment share one push, within one Strapi process. That's enough for this demo, which runs one Strapi. In production it isn't: several Strapi processes can each send, and a crash between the push and its record leaves no `sent` row. The usual remedies are a claim row with a unique index on the reference, written before the push so only one sender wins; LINE's `X-Line-Retry-Key` header on the push, with LINE's 409 answer to a repeated key treated as sent; or an outbox, where publishing only writes a pending row and a worker sends it and retries.
 
@@ -270,7 +270,7 @@ Two sends for the same visit at the same moment share one push, within one Strap
 
 ### Send again
 
-On the board, a confirmed request whose LINE column says "not sent" has a **Send again** button, for admins with "MCP: confirm appointment requests". It sends the confirmation, unless it has gone out already, and shows a notification saying how it went. It calls `POST /maison/appointments/:reference/notify`, gated on the same permission as **Confirm**, which answers:
+On the board, a confirmed request whose LINE column says "not sent" has a **Send again** button until its visit is over, for admins with "MCP: confirm appointment requests". It sends the confirmation, unless it has gone out already, and shows a notification saying how it went. It calls `POST /maison/appointments/:reference/notify`, gated on the same permission as **Confirm**, which answers:
 
 | Status | When |
 |---|---|
@@ -278,6 +278,7 @@ On the board, a confirmed request whose LINE column says "not sent" has a **Send
 | 200, with `status: "already_sent"` | It had gone out already, so nothing was sent |
 | 404 | No appointment has that reference |
 | 409 (`not_confirmed`) | The visit isn't confirmed |
+| 422 (`past`) | The visit is over, so it gets no confirmation |
 | 502 (`failed`) | LINE refused it or couldn't be reached. The failure is recorded |
 | 503 (`not_configured`) | There's no `lineChannelAccessToken` or no `liffUrl` |
 

@@ -3,6 +3,7 @@ import type { Core } from '@strapi/strapi';
 import { getConfig } from '../config';
 import { PLUGIN_ID, UID } from '../constants';
 import type { FlexMessage } from '../domain/flex-message';
+import { toZonedIso } from '../domain/time';
 import { CONFIRMATION_POPULATE, confirmationFor, type Outcome } from './confirmations';
 
 type Doc = Record<string, any>;
@@ -13,10 +14,11 @@ type Doc = Record<string, any>;
  * - `failed`: LINE refused it or couldn't be reached, and a `failed` notification says why.
  * - `already_sent`: a `sent` notification already exists, so nothing was sent.
  * - `not_confirmed`: the visit has no published version, so nothing was sent.
+ * - `past`: the visit is over, so nothing was sent, as pending_confirmations lists none.
  * - `not_found`: no appointment has this reference.
  * - `not_configured`: there's no channel access token, or no liffUrl for the message's link. Nothing was sent or recorded.
  */
-export type SendStatus = 'sent' | 'failed' | 'already_sent' | 'not_confirmed' | 'not_found' | 'not_configured';
+export type SendStatus = 'sent' | 'failed' | 'already_sent' | 'not_confirmed' | 'past' | 'not_found' | 'not_configured';
 
 export interface SendOutcome {
   reference: string;
@@ -100,7 +102,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
   };
 
   /** One confirmation, sent and recorded. sendConfirmation makes sure only one runs per reference. */
-  const send = async (reference: string): Promise<SendOutcome> => {
+  const send = async (reference: string, now: Date): Promise<SendOutcome> => {
     const sent = await strapi.documents(UID.notification).findFirst({
       filters: { outcome: { $eq: 'sent' }, appointmentReference: { $eq: reference } },
       fields: ['appointmentReference'],
@@ -123,6 +125,15 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     }
 
     const { lineChannelAccessToken: token, lineApiBaseUrl, liffUrl, timezone, houseName } = getConfig(strapi);
+    // pending_confirmations lists a visit until it starts, so a confirmation goes out until then too.
+    const when = new Date(published.requestedFor);
+    if (when.getTime() < now.getTime()) {
+      return {
+        reference,
+        status: 'past',
+        message: `The visit for ${reference} was at ${toZonedIso(when, timezone)}, which has passed, so it gets no confirmation.`,
+      };
+    }
     if (!token) return notConfigured(reference, NO_TOKEN);
     if (!liffUrl) return notConfigured(reference, NO_LIFF_URL);
 
@@ -141,11 +152,12 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
      * outcome. A visit with a `sent` notification gets nothing more: that is the only send-once rule. Calls for a
      * visit that is being sent share that send, so this process never pushes one visit twice at once. Publishing an
      * appointment calls this, whichever way it was published, and so does the board's Send again.
+     * `now` is only for tests. It defaults to the current time.
      */
-    sendConfirmation(reference: string): Promise<SendOutcome> {
+    sendConfirmation(reference: string, now: Date = new Date()): Promise<SendOutcome> {
       const running = inFlight.get(reference);
       if (running) return running;
-      const sending = send(reference).finally(() => inFlight.delete(reference));
+      const sending = send(reference, now).finally(() => inFlight.delete(reference));
       inFlight.set(reference, sending);
       return sending;
     },

@@ -14,11 +14,13 @@ const fail = (ctx, { code, message, hint }: ServiceFailure) =>
 
 /**
  * Strapi's error helper for each outcome of Send again that isn't a 200: 404, 409 for a visit that isn't confirmed,
- * 502 when LINE refused or couldn't be reached, and 503 when Strapi has no token or liffUrl to send with.
+ * 422 for one that's over, 502 when LINE refused or couldn't be reached, and 503 when Strapi has no token or liffUrl
+ * to send with.
  */
 const NOTIFY_ERRORS: Record<Exclude<SendStatus, 'sent' | 'already_sent'>, string> = {
   not_found: 'notFound',
   not_confirmed: 'conflict',
+  past: 'unprocessableEntity',
   failed: 'badGateway',
   not_configured: 'serviceUnavailable',
 };

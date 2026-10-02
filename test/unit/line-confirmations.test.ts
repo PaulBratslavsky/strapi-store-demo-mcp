@@ -155,6 +155,19 @@ describe('sendConfirmation', () => {
     expect(record).not.toHaveBeenCalled();
   });
 
+  it('sends and records nothing for a visit that is over: past, as pending_confirmations lists none', async () => {
+    const { sender, record } = world();
+    const outcome = await sender.sendConfirmation('APT-4821', new Date('2030-01-12T05:00:00.001Z'));
+    expect(outcome).toMatchObject({ status: 'past', message: expect.stringContaining('2030-01-12T14:00:00+09:00') });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('still sends at the moment the visit starts, when pending_confirmations still lists it', async () => {
+    const { sender } = world();
+    expect(await sender.sendConfirmation('APT-4821', new Date('2030-01-12T05:00:00.000Z'))).toMatchObject({ status: 'sent' });
+  });
+
   it('answers not_found for a reference no appointment has', async () => {
     const { sender, record } = world({ exists: false });
     expect(await sender.sendConfirmation('APT-4821')).toMatchObject({ status: 'not_found' });
