@@ -157,11 +157,14 @@ describe('getDisplayName', () => {
     expect(requested().init.signal).toBe(timeout.mock.results[0].value);
   });
 
+  // The question's customerName holds 100 UTF-16 units (Strapi's maxLength counts them, so 100 emoji don't fit).
   it.each([
-    ['a name of 150 letters to 100 characters', 'n'.repeat(150), 'n'.repeat(100)],
-    ['a name of 150 emoji to 100 emoji, none cut in half', '😀'.repeat(150), '😀'.repeat(100)],
+    ['a name of 150 letters to 99 and an ellipsis, 100 units', 'n'.repeat(150), `${'n'.repeat(99)}…`],
+    ['a name of 150 emoji to 49 and an ellipsis, 99 units, none cut in half', '😀'.repeat(150), `${'😀'.repeat(49)}…`],
   ])('cuts %s', async (_label, name, cut) => {
     useFetch(answers(200, JSON.stringify({ displayName: name })));
-    expect(await getDisplayName(API, 'Uabc')).toBe(cut);
+    const displayName = await getDisplayName(API, 'Uabc');
+    expect(displayName).toBe(cut);
+    expect(displayName?.length).toBeLessThanOrEqual(100);
   });
 });

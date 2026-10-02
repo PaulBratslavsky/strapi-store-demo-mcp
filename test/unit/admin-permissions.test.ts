@@ -24,3 +24,10 @@ describe("the admin panel's permissions", () => {
     for (const { action } of Object.values(PERMISSIONS).flat()) expect(registered, action).toContain(action);
   });
 });
+
+describe('the actions bootstrap registers', () => {
+  it('include the three question actions: handing a question to staff, reading questions and answering them', async () => {
+    const registered = await registeredActions();
+    for (const action of [ACTION.questionsAsk, ACTION.questionsRead, ACTION.questionsAnswer]) expect(registered, action).toContain(action);
+  });
+});

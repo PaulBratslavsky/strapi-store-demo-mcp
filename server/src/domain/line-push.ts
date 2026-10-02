@@ -2,6 +2,7 @@
  * LINE's Messaging API, as Strapi calls it: a push to one customer, and a customer's display name. Neither ever throws:
  * what went wrong becomes the detail, or no name.
  */
+import { fitUnits } from './text';
 
 /** Where LINE answers, and Strapi's channel access token. */
 export interface LineApi {
@@ -63,8 +64,8 @@ export const pushMessages = async (
 
 /**
  * A customer's LINE display name, from LINE's Get profile API, or null when LINE gives none within PROFILE_TIMEOUT_MS:
- * someone who isn't a friend and hasn't written to the account, a refusal, or no answer. Trimmed, and cut to 100
- * characters, as the question keeps it.
+ * someone who isn't a friend and hasn't written to the account, a refusal, or no answer. Trimmed, and cut to fit the
+ * question's `customerName`, 100 UTF-16 units, ending with "…" when it was cut.
  */
 export const getDisplayName = async ({ apiBaseUrl, token }: LineApi, userId: string): Promise<string | null> => {
   try {
@@ -75,7 +76,7 @@ export const getDisplayName = async ({ apiBaseUrl, token }: LineApi, userId: str
     if (!response.ok) return null;
     const body = (await response.json()) as { displayName?: unknown } | null;
     const name = typeof body?.displayName === 'string' ? body.displayName.trim() : '';
-    return name ? Array.from(name).slice(0, 100).join('') : null;
+    return name ? fitUnits(name, 100) : null;
   } catch {
     return null;
   }
