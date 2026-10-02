@@ -13,6 +13,9 @@ const ACTIONS = [
   { uid: 'questions.ask', displayName: 'MCP: hand questions to staff', subCategory: 'mcp' },
   { uid: 'questions.read', displayName: 'Read customer questions', subCategory: 'questions' },
   { uid: 'questions.answer', displayName: 'Answer customer questions on LINE', subCategory: 'questions' },
+  { uid: 'inquiries.log', displayName: 'MCP: log customer inquiries', subCategory: 'mcp' },
+  { uid: 'inquiries.view', displayName: 'Review customer inquiries', subCategory: 'inquiries' },
+  { uid: 'inquiries.reply', displayName: 'Reply to customer inquiries on LINE', subCategory: 'inquiries' },
   { uid: 'demo.manage', displayName: 'Load and reset demo data', subCategory: 'demo' },
 ];
 
