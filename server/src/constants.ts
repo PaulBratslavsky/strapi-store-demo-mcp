@@ -37,6 +37,7 @@ export const TOOL_NAMES = [
   'request_appointment',
   'my_appointments',
   'hand_off_to_staff',
+  'log_inquiry',
   'appointment_requests',
   'confirm_appointment',
   'pending_confirmations',
@@ -72,9 +73,11 @@ export type InquiryKind = (typeof INQUIRY_KINDS)[number];
 export const SENTIMENT_LABELS = ['positive', 'neutral', 'negative'] as const;
 export type SentimentLabel = (typeof SENTIMENT_LABELS)[number];
 export const ANALYSIS_STATUSES = ['pending', 'analyzed', 'failed', 'skipped'] as const;
+export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
 export const INQUIRY_QUEUES = ['needs-answer', 'complaint', 'praise', 'none'] as const;
 export type InquiryQueue = (typeof INQUIRY_QUEUES)[number];
 export const INQUIRY_STATUSES = ['open', 'replied', 'closed'] as const;
+export type InquiryStatus = (typeof INQUIRY_STATUSES)[number];
 export const CLOSE_REASONS = ['answered-elsewhere', 'not-needed', 'spam'] as const;
 export type CloseReason = (typeof CLOSE_REASONS)[number];
 export const INQUIRY_VIA = ['concierge', 'line-chat'] as const;

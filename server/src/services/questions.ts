@@ -206,6 +206,18 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return { reference, status: 'sent', message, warning: true };
   };
 
+  /**
+   * The answer is the reply to every inquiry the question came from, so they show as replied, with it. The customer has the
+   * answer by now, so a failure here never changes the outcome: it is logged, and the question stays answered.
+   */
+  const markInquiriesReplied = async (row: Doc, text: string, staffName: string | null, at: Date, token: string): Promise<void> => {
+    try {
+      await strapi.plugin('maison').service('inquiries').markQuestionReplied(row.reference, { replyText: text, repliedBy: staffName ?? 'Maison', at });
+    } catch (error) {
+      strapi.log.warn(`[maison] ${row.reference} is answered, but its inquiries couldn't be marked replied: ${reasonOf(error, token)}`);
+    }
+  };
+
   /** The name of the question's piece in its language, or null when the question isn't about one, or the piece isn't published. */
   const productNameOf = async (row: Doc): Promise<string | null> =>
     row.productSlug ? ((await productNamed(row.productSlug, row.language))?.name ?? null) : null;
@@ -334,7 +346,8 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
      * or a taken question can be answered, an answered one is `already_answered`. With `addToKnowledge`, the answer also
      * becomes a published knowledge entry in the question's language, about its piece, titled as staff wrote it, or with
      * the customer's question when they wrote no title. The customer has the answer by then, so an entry that can't be
-     * made never undoes it: the question is still answered, and the message says so, with `warning`.
+     * made never undoes it: the question is still answered, and the message says so, with `warning`. Once the question is
+     * answered, its inquiries are marked replied.
      * `now` is only for tests. It defaults to the current time.
      */
     async answer(reference: string, reply: Reply, staffName: string | null, now: Date = new Date()): Promise<ReplyOutcome> {
@@ -376,6 +389,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       } catch (error) {
         return sentUnrecorded(reference, sent, error, token);
       }
+      await markInquiriesReplied(row, reply.text, staffName, now, token);
       if (knowledgeProblem !== undefined) {
         const message = `${sent}. It couldn't be added to product knowledge: ${knowledgeProblem}`;
         strapi.log.warn(`[maison] ${message}`);

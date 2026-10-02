@@ -25,15 +25,15 @@ describe('constants', () => {
     for (const action of Object.values(ACTION)) expect(action.startsWith('plugin::maison.')).toBe(true);
   });
 
-  it('declares the twelve tools exactly once each', () => {
-    expect(TOOL_NAMES).toHaveLength(12);
-    expect(new Set(TOOL_NAMES).size).toBe(12);
+  it('declares the thirteen tools exactly once each', () => {
+    expect(TOOL_NAMES).toHaveLength(13);
+    expect(new Set(TOOL_NAMES).size).toBe(13);
   });
 
-  it('lists hand_off_to_staff right after my_appointments, in the order the tools are registered', () => {
+  it('lists hand_off_to_staff right after my_appointments, and log_inquiry right after it, in the order the tools are registered', () => {
     expect(TOOL_NAMES).toEqual([
       'browse_collections', 'search_products', 'view_product', 'find_boutiques', 'search_knowledge',
-      'request_appointment', 'my_appointments', 'hand_off_to_staff',
+      'request_appointment', 'my_appointments', 'hand_off_to_staff', 'log_inquiry',
       'appointment_requests', 'confirm_appointment', 'pending_confirmations', 'record_confirmation',
     ]);
   });
