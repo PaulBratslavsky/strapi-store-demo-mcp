@@ -48,16 +48,18 @@ const EMPTY: Record<Status, string> = {
 const visitTime = (iso: string) => iso.slice(0, 16).replace('T', ' ');
 const canStillConfirm = (appointment: StaffAppointment) =>
   appointment.status === 'requested' && Date.parse(appointment.requestedFor) > Date.now();
+/** A confirmed visit whose LINE column says "not sent". */
+const canSendAgain = (appointment: StaffAppointment) => appointment.status === 'confirmed' && !appointment.confirmationSent;
 
 export const RequestsBoard = ({
   canConfirm,
   refreshKey,
-  onConfirmed,
+  onChange,
 }: {
   canConfirm: boolean;
   refreshKey: number;
-  /** Called after staff confirmed a request, so what else shows the numbers can refresh at once. */
-  onConfirmed?: () => void;
+  /** Called after staff confirmed a request or sent its LINE confirmation, so what else shows the numbers can refresh at once. */
+  onChange?: () => void;
 }) => {
   const { get, post } = useFetchClient();
   const { toggleNotification } = useNotification();
@@ -65,6 +67,7 @@ export const RequestsBoard = ({
   const [appointments, setAppointments] = React.useState<StaffAppointment[] | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [confirming, setConfirming] = React.useState<string | null>(null);
+  const [notifying, setNotifying] = React.useState<string | null>(null);
   /** The filter on screen, updated the moment staff pick another. A response for any other filter is dropped. */
   const shownStatus = React.useRef<Status>(status);
 
@@ -92,14 +95,35 @@ export const RequestsBoard = ({
     setConfirming(reference);
     try {
       await post(`/maison/appointments/${reference}/confirm`);
-      toggleNotification({ type: 'success', message: `Confirmed ${reference}. The LINE ops agent sends the customer's confirmation.` });
-      onConfirmed?.();
+      toggleNotification({ type: 'success', message: `Confirmed ${reference}. The customer's LINE confirmation is on its way.` });
+      onChange?.();
       await load();
     } catch (error) {
       toggleNotification({ type: 'danger', message: (error as Error).message });
     } finally {
       setConfirming(null);
     }
+  };
+
+  /** Send again: Strapi sends the visit's LINE confirmation, unless it has gone out already. Then the board reloads. */
+  const sendAgain = async (reference: string) => {
+    setNotifying(reference);
+    try {
+      const { data } = await post<{ status: 'sent' | 'already_sent' }>(`/maison/appointments/${reference}/notify`);
+      toggleNotification({
+        type: 'success',
+        message:
+          data.status === 'already_sent'
+            ? `The LINE confirmation for ${reference} had already been sent.`
+            : `Sent the LINE confirmation for ${reference}.`,
+      });
+      onChange?.();
+    } catch (error) {
+      // Why nothing went out, in the server's words: what LINE answered, or the setting that's missing.
+      toggleNotification({ type: 'danger', message: (error as Error).message });
+    }
+    await load(); // load reports its own errors
+    setNotifying(null);
   };
 
   const columns = ['Reference', 'Customer', 'Boutique', 'Visit', 'Products', 'Note', 'Status', 'LINE', 'Created via', ...(canConfirm ? [''] : [])];
@@ -199,6 +223,17 @@ export const RequestsBoard = ({
                         onClick={() => confirm(appointment.reference)}
                       >
                         Confirm
+                      </Button>
+                    )}
+                    {canSendAgain(appointment) && (
+                      <Button
+                        size="S"
+                        variant="secondary"
+                        loading={notifying === appointment.reference}
+                        disabled={notifying !== null}
+                        onClick={() => sendAgain(appointment.reference)}
+                      >
+                        Send again
                       </Button>
                     )}
                   </Td>
