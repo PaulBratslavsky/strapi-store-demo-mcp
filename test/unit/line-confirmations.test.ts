@@ -1,3 +1,5 @@
+import { createServer, type IncomingHttpHeaders } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import confirmations from '../../server/src/services/confirmations';
 import { LIFF_URL, LINE_API, LINE_CONFIG as CONFIG, LINE_USER_ID, PUBLISHED, TOKEN, lineAnswers, world } from './fake-line';
@@ -160,5 +162,55 @@ describe('the confirmation message', () => {
     expect(body.messages).toEqual([{ type: 'flex', ...pending.message }]);
     // Both read the same fields of the published visit.
     expect(appointmentFindOne.mock.calls[0][0].populate).toEqual(appointmentFindMany.mock.calls[0][0].populate);
+  });
+});
+
+describe('over real HTTP, with the real fetch', () => {
+  /** A server on a free port of this machine that answers every request as LINE answers a push, and keeps them. */
+  const startServer = async () => {
+    const received: Array<{ method?: string; url?: string; headers: IncomingHttpHeaders; body: Doc }> = [];
+    const server = createServer((request, response) => {
+      let raw = '';
+      request.on('data', (chunk) => (raw += chunk));
+      request.on('end', () => {
+        received.push({ method: request.method, url: request.url, headers: request.headers, body: JSON.parse(raw) });
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end('{"sentMessages":[{"id":"7","quoteToken":"t"}]}');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return { url, received, close: () => new Promise((resolve) => server.close(resolve)) };
+  };
+
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('sends the push LINE expects to the configured API', async () => {
+    const server = await startServer();
+    try {
+      const { sender, record } = world({ config: { ...CONFIG, lineApiBaseUrl: server.url } });
+      expect(await sender.sendConfirmation('APT-4821')).toMatchObject({ status: 'sent' });
+      expect(server.received).toHaveLength(1);
+      const [push] = server.received;
+      expect(push).toMatchObject({ method: 'POST', url: '/v2/bot/message/push', body: { to: LINE_USER_ID } });
+      expect(push.headers.authorization).toBe(`Bearer ${TOKEN}`);
+      expect(push.headers['content-type']).toBe('application/json');
+      expect(push.body.messages[0]).toMatchObject({ type: 'flex', altText: 'ご来店予約が確定しました（APT-4821）' });
+      expect(record).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ status: 'sent', detail: '{"sentMessages":[{"id":"7","quoteToken":"t"}]}' })
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('records failed, with the reason, when nothing listens there', async () => {
+    const server = await startServer();
+    await server.close(); // the port is free again, so the connection is refused
+    const { sender, record } = world({ config: { ...CONFIG, lineApiBaseUrl: server.url } });
+    expect((await sender.sendConfirmation('APT-4821')).status).toBe('failed');
+    expect(record).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ status: 'failed', detail: expect.stringMatching(/^LINE couldn't be reached: .*ECONNREFUSED/) })
+    );
   });
 });
