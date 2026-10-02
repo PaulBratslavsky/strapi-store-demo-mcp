@@ -197,4 +197,8 @@ describe('buildConfirmationMessage in English', () => {
   it('replaces an empty address with a dash, as in Japanese', () => {
     expect(partsOf(buildConfirmationMessage({ ...english, boutiqueAddress: ' ' })).rows[2]).toEqual(['Address', '—']);
   });
+
+  it('writes Japanese for a language that only names an inherited key, such as constructor', () => {
+    expect(buildConfirmationMessage({ ...input, language: 'constructor' as never }).altText).toBe('ご来店予約が確定しました（APT-4821）');
+  });
 });

@@ -81,8 +81,9 @@ const row = (label: string, value: string) => ({
  * Both languages share one layout.
  */
 export function buildConfirmationMessage(input: ConfirmationMessageInput): FlexMessage {
-  // A language a caller without types made up is Japanese too.
-  const words = WORDS[input.language ?? 'ja'] ?? WORDS.ja;
+  // A language a caller without types made up is Japanese too, even one that names an inherited key like constructor.
+  const language = input.language ?? 'ja';
+  const words = Object.prototype.hasOwnProperty.call(WORDS, language) ? WORDS[language] : WORDS.ja;
   return {
     altText: words.altText(input.reference),
     contents: {
