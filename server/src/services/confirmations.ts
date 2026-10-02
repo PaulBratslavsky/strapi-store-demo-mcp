@@ -45,7 +45,7 @@ export const CONFIRMATION_POPULATE = {
  * The language a visit was booked in, which its confirmation is written in. Visits booked before appointments kept one
  * have none: those are Japanese, as is any value that isn't a locale.
  */
-export const visitLanguage = (appointment: Doc): Locale =>
+const visitLanguage = (appointment: Doc): Locale =>
   (LOCALES as readonly unknown[]).includes(appointment.language) ? (appointment.language as Locale) : 'ja';
 
 /** The published versions of `documentIds` in `locale`, by documentId, with `fields`. */
@@ -88,16 +88,17 @@ export const inVisitLanguage = async (strapi: Core.Strapi, appointments: Doc[]):
   for (const language of new Set(appointments.map(visitLanguage))) {
     if (language === defaultLocale) continue;
     const visits = appointments.filter((appointment) => visitLanguage(appointment) === language);
-    named.set(language, {
-      boutiques: await publishedIn(strapi, UID.boutique, language, visits.map((visit) => visit.boutique?.documentId), ['name', 'address']),
-      products: await publishedIn(
+    const [boutiques, products] = await Promise.all([
+      publishedIn(strapi, UID.boutique, language, visits.map((visit) => visit.boutique?.documentId), ['name', 'address']),
+      publishedIn(
         strapi,
         UID.product,
         language,
         visits.flatMap((visit) => ((visit.products ?? []) as Doc[]).map((product) => product.documentId)),
         ['name']
       ),
-    });
+    ]);
+    named.set(language, { boutiques, products });
   }
   return appointments.map((appointment) => {
     const names = named.get(visitLanguage(appointment));

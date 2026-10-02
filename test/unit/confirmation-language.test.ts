@@ -131,11 +131,11 @@ describe('inVisitLanguage, the names a confirmation uses', () => {
   });
 
   it('looks a Japanese visit up in Japanese when the default locale, which visits link, is English', async () => {
-    const english = {
+    const inJapanese = {
       [UID.boutique]: { ja: [{ documentId: 'boutique-ginza', name: '銀座本店', address: '東京都中央区銀座 1-2-3（デモ）' }] },
       [UID.product]: { ja: [{ documentId: 'product-weekender', name: 'ウィークエンダー 50' }] },
     };
-    const w = world({ translations: english, config: { defaultLocale: 'en' } });
+    const w = world({ translations: inJapanese, config: { defaultLocale: 'en' } });
     const linkedInEnglish = { ...PUBLISHED_EN, boutique: { documentId: 'boutique-ginza', name: 'Ginza Flagship', address: '' } };
     const [japanese, inEnglish] = await inVisitLanguage(w.strapi, [{ ...linkedInEnglish, language: 'ja' }, linkedInEnglish]);
     expect(japanese.boutique.name).toBe('銀座本店');
