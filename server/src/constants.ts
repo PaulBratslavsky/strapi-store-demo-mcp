@@ -32,6 +32,7 @@ export const TOOL_NAMES = [
   'search_knowledge',
   'request_appointment',
   'my_appointments',
+  'hand_off_to_staff',
   'appointment_requests',
   'confirm_appointment',
   'pending_confirmations',

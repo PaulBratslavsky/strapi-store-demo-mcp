@@ -1,6 +1,6 @@
 import { z } from '@strapi/utils';
 
-import { CATEGORIES, CREATED_VIA, LOCALES, OCCASIONS } from '../constants';
+import { CATEGORIES, CREATED_VIA, LOCALES, OCCASIONS, QUESTION_REASONS } from '../constants';
 import { ISO_DATE, isRealIsoDate } from '../domain/hours';
 import { failure, type ServiceFailure } from '../domain/service-result';
 
@@ -101,6 +101,23 @@ export const appointmentOutput = z.object({
   products: z.array(z.object({ slug: z.string(), name: z.string() })),
   note: z.string(),
   confirmationSent: z.boolean().describe('Whether the LINE confirmation has been delivered.'),
+});
+
+/** No customer field: the customer always comes from the caller's LINE sign-in. */
+export const handOffToStaffInput = z.object({
+  question: z.string().trim().min(1).max(1000).describe("The customer's question, in their own words."),
+  reason: z
+    .enum(QUESTION_REASONS)
+    .optional()
+    .describe('"no_answer" (the default) when search_knowledge has no entry that answers it; "asked_for_person" when the customer asked for a person.'),
+  productSlug: slugInput.optional().describe('The piece the question is about, when it is about one piece.'),
+  locale: localeInput,
+});
+
+export const questionOutput = z.object({
+  reference: z.string(),
+  status: z.literal('open'),
+  product: z.object({ slug: z.string(), name: z.string() }).nullable(),
 });
 
 /** An appointment reference such as APT-4821 (see domain/reference.ts). */
