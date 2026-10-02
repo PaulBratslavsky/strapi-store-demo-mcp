@@ -25,6 +25,7 @@ export const TOOL_NAMES = [
   'search_products',
   'view_product',
   'find_boutiques',
+  'search_knowledge',
   'request_appointment',
   'my_appointments',
   'appointment_requests',
