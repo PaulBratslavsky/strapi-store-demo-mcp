@@ -2,9 +2,11 @@ import type { Core } from '@strapi/strapi';
 
 import { getConfig } from '../config';
 import {
+  INQUIRY_FILTERS,
   UID,
   type AnalysisStatus,
   type CloseReason,
+  type InquiryFilter,
   type InquiryKind,
   type InquiryQueue,
   type InquiryStatus,
@@ -15,7 +17,9 @@ import {
 import { queueFor } from '../domain/inquiry-queue';
 import { failure, type ServiceResult } from '../domain/service-result';
 import { maskSubject } from '../domain/subject';
-import { fitUnits } from '../domain/text';
+import { fitLines } from '../domain/text';
+import { isoOrNull } from '../domain/time';
+import { productNamed, rememberProductNames } from './product-names';
 
 type Doc = Record<string, any>;
 
@@ -66,7 +70,7 @@ export interface StaffInquiryView {
 
 export interface InquiryFilters {
   /** needs-answer, the default: the Inquiries tab opens on it. */
-  filter?: 'needs-answer' | 'complaint' | 'praise' | 'not-labelled' | 'all';
+  filter?: InquiryFilter;
   limit?: number;
 }
 
@@ -88,7 +92,7 @@ const LIST_LIMIT = 50;
  * Not labelled is an inquiry no model or person has labelled yet, or one the model failed on.
  */
 const OPEN = { status: { $eq: 'open' } };
-const FILTERS: Record<NonNullable<InquiryFilters['filter']>, Doc> = {
+const FILTERS: Record<InquiryFilter, Doc> = {
   'needs-answer': { ...OPEN, queue: { $eq: 'needs-answer' } },
   complaint: { ...OPEN, queue: { $eq: 'complaint' } },
   praise: { ...OPEN, queue: { $eq: 'praise' } },
@@ -96,26 +100,14 @@ const FILTERS: Record<NonNullable<InquiryFilters['filter']>, Doc> = {
   all: {},
 };
 
-/** A date as an ISO string, or null when there is none. */
-const isoOrNull = (value: unknown): string | null => (value ? new Date(value as string | number | Date).toISOString() : null);
+/** Whether a value, whatever it came as, is one of the filters. A name like `toString` isn't, though `FILTERS['toString']` is a function. */
+const isInquiryFilter = (value: unknown): value is InquiryFilter => (INQUIRY_FILTERS as readonly unknown[]).includes(value);
 
 const notFound = (documentId: string) => failure('not_found', `No inquiry "${documentId}".`, 'Reload the Inquiries tab: it may have been deleted.');
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
   /** A published piece by slug, named in `language`, or in the default language when it has no version in that one. */
-  const productNamed = async (slug: string, language: Locale): Promise<{ slug: string; name: string } | null> => {
-    const { defaultLocale } = getConfig(strapi);
-    for (const locale of new Set([language, defaultLocale])) {
-      const product = (await strapi.documents(UID.product).findFirst({
-        locale,
-        status: 'published',
-        filters: { slug: { $eq: slug } },
-        fields: ['slug', 'name'],
-      })) as Doc | null;
-      if (product) return { slug: product.slug, name: product.name };
-    }
-    return null;
-  };
+  const findProduct = productNamed(strapi);
 
   /** The reference when a question with it belongs to this customer, else null: a turn never links to anyone else's question. */
   const theirQuestion = async (subject: string, reference: string): Promise<string | null> =>
@@ -164,17 +156,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
   /** Rows as staff see them. Each piece is looked up once per language, and the questions of all the hand-offs in one query. */
   const viewsOf = async (rows: Doc[]): Promise<StaffInquiryView[]> => {
     const statuses = await questionStatuses(rows);
-    const names = new Map<string, Promise<StaffInquiryView['product']>>();
-    const nameOf = (row: Doc): Promise<StaffInquiryView['product']> => {
-      if (!row.productSlug) return Promise.resolve(null);
-      const key = `${row.productSlug} ${row.language}`;
-      let name = names.get(key);
-      if (!name) {
-        name = productNamed(row.productSlug, row.language);
-        names.set(key, name);
-      }
-      return name;
-    };
+    const nameOf = rememberProductNames(findProduct);
     const questionOf = (row: Doc): StaffInquiryView['question'] =>
       row.questionReference ? { reference: row.questionReference, status: statuses.get(row.questionReference) ?? null } : null;
     return Promise.all(rows.map(async (row) => toStaffView(row, await nameOf(row), questionOf(row))));
@@ -195,21 +177,22 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
   return {
     /**
      * Records one concierge turn for staff, with nothing labelled: the model labels it later, and a person can before it.
-     * A hand-off is in Needs an answer at once. The piece and the question are stored only when they are real: a
-     * published piece, and a question that is this customer's. Anything else is dropped and the turn is still logged.
+     * The message and the reply keep their line breaks, cut to what the row holds. A hand-off is in Needs an answer at
+     * once. The piece and the question are stored only when they are real: a published piece, and a question that is
+     * this customer's. Anything else is dropped and the turn is still logged.
      */
     async log(input: InquiryLogInput): Promise<ServiceResult<{ logged: true }>> {
       const { defaultLocale } = getConfig(strapi);
       const language = input.locale ?? defaultLocale;
       const [product, questionReference] = await Promise.all([
-        input.productSlug ? productNamed(input.productSlug, language) : null,
+        input.productSlug ? findProduct(input.productSlug, language) : null,
         input.questionReference ? theirQuestion(input.subject, input.questionReference) : null,
       ]);
       await strapi.documents(UID.inquiry).create({
         data: {
           customer: input.subject,
-          message: fitUnits(input.message, MESSAGE_LENGTH),
-          reply: fitUnits(input.reply ?? '', REPLY_LENGTH) || null,
+          message: fitLines(input.message, MESSAGE_LENGTH),
+          reply: fitLines(input.reply ?? '', REPLY_LENGTH) || null,
           language,
           knowledgeFound: input.knowledgeFound,
           handedOff: input.handedOff,
@@ -223,10 +206,17 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       return { ok: true, value: { logged: true } };
     },
 
-    /** The Inquiries tab's rows, newest first. */
+    /**
+     * The Inquiries tab's rows, newest first. A filter that is not one of `INQUIRY_FILTERS` is `invalid_input`: the route
+     * checks it first, and a caller that doesn't is told, and never shown every row.
+     */
     async list(filters: InquiryFilters = {}): Promise<ServiceResult<StaffInquiryView[]>> {
+      const filter = filters.filter ?? 'needs-answer';
+      if (!isInquiryFilter(filter)) {
+        return failure('invalid_input', `Unknown filter "${String(filter)}".`, `Use one of ${INQUIRY_FILTERS.join(', ')}.`);
+      }
       const rows = (await strapi.documents(UID.inquiry).findMany({
-        filters: FILTERS[filters.filter ?? 'needs-answer'],
+        filters: FILTERS[filter],
         sort: 'createdAt:desc',
         limit: filters.limit ?? LIST_LIMIT,
       })) as Doc[];
@@ -235,7 +225,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
 
     /** The cards above the rows: the open inquiries each filter shows. */
     async summary(): Promise<InquirySummary> {
-      const countOf = (filter: NonNullable<InquiryFilters['filter']>) => strapi.documents(UID.inquiry).count({ filters: FILTERS[filter] });
+      const countOf = (filter: InquiryFilter) => strapi.documents(UID.inquiry).count({ filters: FILTERS[filter] });
       const [needsAnswer, complaint, praise, notLabelled] = await Promise.all([
         countOf('needs-answer'),
         countOf('complaint'),
@@ -245,20 +235,28 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       return { needsAnswer, complaint, praise, notLabelled };
     },
 
-    /** Close: the inquiry needs nothing more, for the reason given. A closed one is `already_closed`. */
+    /**
+     * Close: the inquiry needs nothing more, for the reason given. Only an open one: a closed one is `already_closed`,
+     * and a replied one is `already_replied`, with its reply left as it was.
+     */
     async close(documentId: string, reason: CloseReason): Promise<ServiceResult<StaffInquiryView>> {
       const row = await findRow(documentId);
       if (!row) return notFound(documentId);
       if (row.status === 'closed') {
         return failure('already_closed', 'This inquiry is closed already.', 'Reload the Inquiries tab to see where it stands.');
       }
+      if (row.status === 'replied') {
+        return failure('already_replied', 'This inquiry has been replied to already.', 'Reload the Inquiries tab to see the reply.');
+      }
       return changed(row, { status: 'closed', closeReason: reason });
     },
 
     /**
      * Change label: a person sets the kind, the sentiment, or both. The row is marked as corrected, so labelling never
-     * overwrites it, and its queue follows the new kind by the same rule the model's labels go through. A row nobody
-     * had labelled yet (pending, or failed) leaves Not labelled by becoming `skipped`, so the sweep never picks it.
+     * overwrites it, and its queue follows the new kind by the same rule the model's labels go through. A sentiment
+     * clears the model's score, since the person gave a label and no score; the reason and the topic stay as the model
+     * wrote them. A row nobody had labelled yet (pending, or failed) leaves Not labelled by becoming `skipped`, so the
+     * sweep never picks it.
      */
     async changeLabel(
       documentId: string,
@@ -272,7 +270,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       const unlabelled = row.analysisStatus === 'pending' || row.analysisStatus === 'failed';
       return changed(row, {
         ...(labels.kind !== undefined ? { kind: labels.kind } : {}),
-        ...(labels.sentimentLabel !== undefined ? { sentimentLabel: labels.sentimentLabel } : {}),
+        ...(labels.sentimentLabel !== undefined ? { sentimentLabel: labels.sentimentLabel, sentimentScore: null } : {}),
         humanCorrected: true,
         queue: queueFor({ handedOff: Boolean(row.handedOff), kind: labels.kind ?? row.kind ?? null, answered: row.answered ?? null }),
         ...(unlabelled ? { analysisStatus: 'skipped' } : {}),

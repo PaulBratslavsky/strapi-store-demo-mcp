@@ -3,6 +3,7 @@ import {
   ACTION,
   ANALYSIS_STATUSES,
   CLOSE_REASONS,
+  INQUIRY_FILTERS,
   INQUIRY_KINDS,
   INQUIRY_QUEUES,
   INQUIRY_STATUSES,
@@ -67,5 +68,9 @@ describe('constants', () => {
     expect(INQUIRY_VIA).toEqual(['concierge', 'line-chat']);
     expect(MAX_LABEL_ATTEMPTS).toBe(5);
     expect(LABEL_BATCH).toBe(10);
+  });
+
+  it('declares the filters the Inquiries tab shows, in the order of its pills', () => {
+    expect(INQUIRY_FILTERS).toEqual(['needs-answer', 'complaint', 'praise', 'not-labelled', 'all']);
   });
 });

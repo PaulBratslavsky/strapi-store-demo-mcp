@@ -115,12 +115,33 @@ describe('inquiries.log', () => {
 });
 
 describe('inquiries.log, the words', () => {
-  it('stores the message and the reply trimmed, with every run of whitespace as one space', async () => {
+  // Staff read the customer's paragraphs and the concierge's lists as they were written.
+  it('stores the message and the reply trimmed, keeping their line breaks and the spaces inside their lines', async () => {
     const { service, create } = world();
 
-    await service.log({ ...input, message: '  Can the coffret\n  hold a watch?\n', reply: ' Yes.\n\n It can. ' });
+    await service.log({
+      ...input,
+      message: '  Can the coffret\n  hold a watch?\n',
+      reply: ' Yes.\n\nIt fits:\n- a 42 mm watch\n-   a pair of cufflinks \n',
+    });
 
-    expect(storedBy(create)).toMatchObject({ message: ASKED, reply: 'Yes. It can.' });
+    expect(storedBy(create)).toMatchObject({
+      message: 'Can the coffret\n  hold a watch?',
+      reply: 'Yes.\n\nIt fits:\n- a 42 mm watch\n-   a pair of cufflinks',
+    });
+  });
+
+  it('counts a line break as one unit when it cuts, and keeps the breaks in what it keeps', async () => {
+    const { service, create } = world();
+
+    await service.log({ ...input, message: 'a\n'.repeat(700), reply: 'b\n\n'.repeat(1000) });
+
+    const { message, reply } = storedBy(create);
+    expect(message).toBe(`${'a\n'.repeat(499)}a…`);
+    expect(message).toHaveLength(1000);
+    expect(reply.startsWith('b\n\nb\n\n')).toBe(true);
+    expect(reply.endsWith('…')).toBe(true);
+    expect(reply).toHaveLength(2000);
   });
 
   it('keeps a message of 1000 UTF-16 units whole, and cuts a longer one to 1000, ending with …', async () => {

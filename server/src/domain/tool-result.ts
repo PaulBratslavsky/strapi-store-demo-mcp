@@ -7,6 +7,7 @@ export type ErrorCode =
   | 'too_many_open_requests'
   | 'too_many_open_questions'
   | 'already_closed'
+  | 'already_replied'
   | 'not_failed'
   | 'not_published'
   | 'not_configured'

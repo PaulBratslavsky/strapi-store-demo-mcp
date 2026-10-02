@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CLOSE_REASONS, INQUIRY_KINDS, SENTIMENT_LABELS, UID } from '../../server/src/constants';
+import { CLOSE_REASONS, INQUIRY_FILTERS, INQUIRY_KINDS, SENTIMENT_LABELS, UID } from '../../server/src/constants';
 import inquiries from '../../server/src/services/inquiries';
 import { fakeStrapi } from './fake-strapi';
 
@@ -216,6 +216,24 @@ describe('inquiries.list, the filters', () => {
     expect(idsOf(await service.list())).toEqual(['answer-1', 'handoff-1']);
     expect(idsOf(await service.list({}))).toEqual(['answer-1', 'handoff-1']);
   });
+
+  // The route checks the filter first. A caller that doesn't hears about it, and is never shown every row.
+  it.each(['complaints', 'ALL', 'open', '', 'toString', 'constructor', '__proto__', 'hasOwnProperty'])(
+    'refuses the filter "%s", which is not one of the five, and lists nothing',
+    async (filter) => {
+      const { service, findMany } = world({ rows: TABLE });
+
+      const result = await service.list({ filter: filter as any });
+
+      expect(result).toEqual({
+        ok: false,
+        code: 'invalid_input',
+        message: expect.stringContaining(`Unknown filter "${filter}"`),
+        hint: expect.stringContaining(INQUIRY_FILTERS.join(', ')),
+      });
+      expect(findMany).not.toHaveBeenCalled();
+    }
+  );
 
   it('puts the newest first, and shows 50 by default', async () => {
     const { service, findMany } = world();
@@ -536,6 +554,37 @@ describe('inquiries.close', () => {
     expect(stored[0].closeReason).toBe('spam');
   });
 
+  it('answers already_replied for a replied inquiry, and writes nothing: the reply stays', async () => {
+    const replied = {
+      ...PENDING,
+      status: 'replied',
+      replyText: 'Yes, a watch up to 42 mm fits.',
+      repliedAt: '2026-10-03T03:00:00.000Z',
+      repliedBy: 'Jane',
+      lineOutcome: 'sent',
+    };
+    const { service, update, stored } = world({ rows: [replied] });
+
+    const result = await service.close('inq-1', 'not-needed');
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'already_replied',
+      message: 'This inquiry has been replied to already.',
+      hint: expect.any(String),
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(stored[0]).toMatchObject({ status: 'replied', closeReason: null, replyText: 'Yes, a watch up to 42 mm fits.', repliedBy: 'Jane' });
+  });
+
+  it('closes only an open inquiry: every other status is refused, and no write is made', async () => {
+    for (const [status, code] of [['replied', 'already_replied'], ['closed', 'already_closed']] as const) {
+      const { service, update } = world({ rows: [{ ...PENDING, status }] });
+      expect(await service.close('inq-1', 'spam')).toMatchObject({ ok: false, code });
+      expect(update).not.toHaveBeenCalled();
+    }
+  });
+
   it('answers not_found for an ID no inquiry has, and writes nothing', async () => {
     const { service, update, findOne } = world({ rows: [PENDING] });
 
@@ -562,32 +611,55 @@ describe('inquiries.changeLabel', () => {
     });
   });
 
-  it('sets the sentiment alone, and leaves the kind, the score and the queue as they were', async () => {
+  it("keeps the model's sentiment and score when only the kind changes", async () => {
+    const { service } = world({ rows: [UNANSWERED] });
+    expect(await service.changeLabel('inq-2', { kind: 'praise' })).toMatchObject({
+      ok: true,
+      value: { sentimentLabel: 'neutral', sentimentScore: 0.1 },
+    });
+  });
+
+  it('sets the sentiment alone, clears the score the model gave, and leaves the kind, the reason, the topic and the queue as they were', async () => {
     const { service, update } = world({ rows: [COMPLAINT] });
 
     const result = await service.changeLabel('inq-4', { sentimentLabel: 'neutral' });
 
+    // A person gave a label, not a score, so the model's number must not sit beside it.
     expect(update).toHaveBeenCalledExactlyOnceWith({
       documentId: 'inq-4',
-      data: { sentimentLabel: 'neutral', humanCorrected: true, queue: 'complaint' },
+      data: { sentimentLabel: 'neutral', sentimentScore: null, humanCorrected: true, queue: 'complaint' },
     });
     expect(result).toMatchObject({
       ok: true,
-      value: { kind: 'complaint', sentimentScore: -0.7, sentimentLabel: 'neutral', queue: 'complaint', humanCorrected: true },
+      value: {
+        kind: 'complaint',
+        sentimentScore: null,
+        sentimentLabel: 'neutral',
+        reason: 'The customer says a clasp broke.',
+        topic: 'repairs',
+        queue: 'complaint',
+        humanCorrected: true,
+      },
     });
   });
 
-  it('sets both together', async () => {
+  it('sets both together, and clears the score', async () => {
     const { service, update } = world({ rows: [COMPLAINT] });
 
     await service.changeLabel('inq-4', { kind: 'praise', sentimentLabel: 'positive' });
 
-    expect(update.mock.calls[0][0].data).toEqual({ kind: 'praise', sentimentLabel: 'positive', humanCorrected: true, queue: 'praise' });
+    expect(update.mock.calls[0][0].data).toEqual({
+      kind: 'praise',
+      sentimentLabel: 'positive',
+      sentimentScore: null,
+      humanCorrected: true,
+      queue: 'praise',
+    });
   });
 
-  it.each(SENTIMENT_LABELS)('accepts the sentiment %s', async (sentimentLabel) => {
+  it.each(SENTIMENT_LABELS)('accepts the sentiment %s, with no score beside it', async (sentimentLabel) => {
     const { service } = world({ rows: [COMPLAINT] });
-    expect(await service.changeLabel('inq-4', { sentimentLabel })).toMatchObject({ ok: true, value: { sentimentLabel } });
+    expect(await service.changeLabel('inq-4', { sentimentLabel })).toMatchObject({ ok: true, value: { sentimentLabel, sentimentScore: null } });
   });
 
   describe('the queue', () => {

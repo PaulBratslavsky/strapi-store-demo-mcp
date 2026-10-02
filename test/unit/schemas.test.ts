@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import knowledgeSchema from '../../server/src/content-types/knowledge/schema.json';
-import { CLOSE_REASONS, INQUIRY_KINDS, SENTIMENT_LABELS } from '../../server/src/constants';
+import { CLOSE_REASONS, INQUIRY_FILTERS, INQUIRY_KINDS, SENTIMENT_LABELS } from '../../server/src/constants';
 import {
   answerInput,
   changeLabelInput,
@@ -296,8 +296,12 @@ describe('inquiryListInput', () => {
     expect(parse({}).data).toEqual({});
   });
 
-  it.each(['needs-answer', 'complaint', 'praise', 'not-labelled', 'all'])('accepts the filter %s', (filter) => {
+  it.each(INQUIRY_FILTERS)('accepts the filter %s', (filter) => {
     expect(parse({ filter }).data?.filter).toBe(filter);
+  });
+
+  it('takes its filters from the one list in the constants: the same five, in the same order', () => {
+    expect(inquiryListInput.shape.filter.unwrap().options).toEqual([...INQUIRY_FILTERS]);
   });
 
   it.each(['open', 'needs_answer', 'Praise', ''])('refuses the filter "%s"', (filter) => {

@@ -8,6 +8,8 @@ import { generateReference } from '../domain/reference';
 import { failure, type ServiceResult } from '../domain/service-result';
 import { lineUserIdOf, maskSubject } from '../domain/subject';
 import { fitUnits } from '../domain/text';
+import { isoOrNull } from '../domain/time';
+import { productNamed, rememberProductNames } from './product-names';
 
 type Doc = Record<string, any>;
 
@@ -93,9 +95,6 @@ const NO_TOKEN = "LINE_CHANNEL_ACCESS_TOKEN isn't set: Strapi can't message cust
 /** What a question's `lineDetail` holds, in UTF-16 units: its `maxLength`. */
 const DETAIL_LENGTH = 500;
 
-/** A date as an ISO string, or null when there is none. */
-const isoOrNull = (value: unknown): string | null => (value ? new Date(value as string | number | Date).toISOString() : null);
-
 /** A question as two of them are compared: trimmed, with every run of whitespace as one space, in lower case. */
 const sameWordsAs = (question: string): string => question.replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -107,19 +106,7 @@ const reasonOf = (error: unknown, token: string): string => withoutToken(String(
 
 export default ({ strapi }: { strapi: Core.Strapi }) => {
   /** A published piece by slug, named in `language`, or in the default language when it has no version in that one. */
-  const productNamed = async (slug: string, language: Locale): Promise<{ slug: string; name: string } | null> => {
-    const { defaultLocale } = getConfig(strapi);
-    for (const locale of new Set([language, defaultLocale])) {
-      const product = (await strapi.documents(UID.product).findFirst({
-        locale,
-        status: 'published',
-        filters: { slug: { $eq: slug } },
-        fields: ['slug', 'name'],
-      })) as Doc | null;
-      if (product) return { slug: product.slug, name: product.name };
-    }
-    return null;
-  };
+  const findProduct = productNamed(strapi);
 
   /** A reference no question has. */
   const uniqueReference = async (): Promise<string> => {
@@ -220,7 +207,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
 
   /** The name of the question's piece in its language, or null when the question isn't about one, or the piece isn't published. */
   const productNameOf = async (row: Doc): Promise<string | null> =>
-    row.productSlug ? ((await productNamed(row.productSlug, row.language))?.name ?? null) : null;
+    row.productSlug ? ((await findProduct(row.productSlug, row.language))?.name ?? null) : null;
 
   /** The entry's title: the one staff gave, or the customer's question when they gave none (or only spaces). Cut to fit. */
   const knowledgeTitle = (row: Doc, reply: Reply): string => (reply.title ? knowledgeTitleOf(reply.title) : '') || knowledgeTitleOf(row.question);
@@ -258,7 +245,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
       const asked = sameWordsAs(input.question);
       const repeat = waiting.find((row) => sameWordsAs(row.question) === asked);
       if (repeat) {
-        const product = repeat.productSlug ? await productNamed(repeat.productSlug, language) : null;
+        const product = repeat.productSlug ? await findProduct(repeat.productSlug, language) : null;
         return { ok: true, value: { reference: repeat.reference, status: 'open', product } };
       }
       if (waiting.length >= MAX_OPEN_QUESTIONS) {
@@ -269,7 +256,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         );
       }
       // An unknown piece never refuses the hand-off: the question still reaches staff, without it.
-      const product = input.productSlug ? await productNamed(input.productSlug, language) : null;
+      const product = input.productSlug ? await findProduct(input.productSlug, language) : null;
       // Staff find the customer's chat in LINE by this name. Without a token, or an answer from LINE, there's none.
       const customerName = token ? await getDisplayName({ apiBaseUrl: lineApiBaseUrl, token }, lineUserIdOf(input.subject)) : null;
       const reference = await uniqueReference();
@@ -296,17 +283,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
         limit: filters.limit ?? 50,
       })) as Doc[];
       // One lookup per piece and language, shared by every question about it.
-      const names = new Map<string, Promise<StaffQuestionView['product']>>();
-      const nameOf = (row: Doc): Promise<StaffQuestionView['product']> => {
-        if (!row.productSlug) return Promise.resolve(null);
-        const key = `${row.productSlug} ${row.language}`;
-        let name = names.get(key);
-        if (!name) {
-          name = productNamed(row.productSlug, row.language);
-          names.set(key, name);
-        }
-        return name;
-      };
+      const nameOf = rememberProductNames(findProduct);
       const views = await Promise.all(rows.map(async (row) => toStaffView(row, await nameOf(row))));
       return { ok: true, value: views };
     },

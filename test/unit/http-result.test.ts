@@ -8,13 +8,14 @@ describe('httpStatus', () => {
     ['not_signed_in', 401],
     ['not_found', 404],
     // 409: the request conflicts with how things stand now: the boutique's hours, the customer's open requests or
-    // questions, a confirmation, an inquiry that is closed or didn't fail. 422: it can't succeed as sent, because time
-    // only moves forward.
+    // questions, a confirmation, an inquiry that is closed or replied to already, or didn't fail. 422: it can't succeed
+    // as sent, because time only moves forward.
     ['boutique_closed', 409],
     ['too_many_open_requests', 409],
     ['too_many_open_questions', 409],
     ['not_published', 409],
     ['already_closed', 409],
+    ['already_replied', 409],
     ['not_failed', 409],
     ['in_the_past', 422],
     ['not_configured', 503],

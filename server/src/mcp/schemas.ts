@@ -4,6 +4,7 @@ import {
   CATEGORIES,
   CLOSE_REASONS,
   CREATED_VIA,
+  INQUIRY_FILTERS,
   INQUIRY_KINDS,
   KNOWLEDGE_CATEGORIES,
   LOCALES,
@@ -205,7 +206,7 @@ export const logInquiryInput = z.object({
 
 /** Staff filters for inquiries, as the admin's Inquiries tab sends them. Without a filter: needs-answer. */
 export const inquiryListInput = z.object({
-  filter: z.enum(['needs-answer', 'complaint', 'praise', 'not-labelled', 'all']).optional(),
+  filter: z.enum(INQUIRY_FILTERS).optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 

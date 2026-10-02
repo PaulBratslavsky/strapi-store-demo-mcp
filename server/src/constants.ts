@@ -81,6 +81,9 @@ export type InquiryStatus = (typeof INQUIRY_STATUSES)[number];
 export const CLOSE_REASONS = ['answered-elsewhere', 'not-needed', 'spam'] as const;
 export type CloseReason = (typeof CLOSE_REASONS)[number];
 export const INQUIRY_VIA = ['concierge', 'line-chat'] as const;
+/** What the Inquiries tab can show, as its pills. */
+export const INQUIRY_FILTERS = ['needs-answer', 'complaint', 'praise', 'not-labelled', 'all'] as const;
+export type InquiryFilter = (typeof INQUIRY_FILTERS)[number];
 /** A row that failed this many times is parked until staff press Label again. */
 export const MAX_LABEL_ATTEMPTS = 5;
 /** How many inquiries one sweep labels. */
