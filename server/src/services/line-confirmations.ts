@@ -99,42 +99,55 @@ export default ({ strapi }: { strapi: Core.Strapi }) => {
     return { reference, status, message };
   };
 
+  /** One confirmation, sent and recorded. sendConfirmation makes sure only one runs per reference. */
+  const send = async (reference: string): Promise<SendOutcome> => {
+    const sent = await strapi.documents(UID.notification).findFirst({
+      filters: { outcome: { $eq: 'sent' }, appointmentReference: { $eq: reference } },
+      fields: ['appointmentReference'],
+    });
+    if (sent) return { reference, status: 'already_sent', message: `The LINE confirmation for ${reference} was already sent.` };
+
+    const draft = (await strapi.documents(UID.appointment).findFirst({
+      status: 'draft',
+      filters: { reference: { $eq: reference } },
+      fields: ['documentId'],
+    })) as Doc | null;
+    if (!draft) return { reference, status: 'not_found', message: `No appointment ${reference}.` };
+    const published = (await strapi.documents(UID.appointment).findOne({
+      documentId: draft.documentId,
+      status: 'published',
+      populate: CONFIRMATION_POPULATE,
+    })) as Doc | null;
+    if (!published) {
+      return { reference, status: 'not_confirmed', message: `Appointment ${reference} hasn't been confirmed, so it gets no confirmation.` };
+    }
+
+    const { lineChannelAccessToken: token, lineApiBaseUrl, liffUrl, timezone, houseName } = getConfig(strapi);
+    if (!token) return notConfigured(reference, NO_TOKEN);
+    if (!liffUrl) return notConfigured(reference, NO_LIFF_URL);
+
+    const confirmation = confirmationFor(published, { liffUrl, timezone, houseName });
+    if (!confirmation) return finish(reference, 'failed', "The appointment has no valid LINE customer, so it can't be confirmed over LINE.", token);
+    const { status, detail } = await push({ apiBaseUrl: lineApiBaseUrl, token }, confirmation.lineUserId, confirmation.message);
+    return finish(reference, status, detail, token);
+  };
+
+  /** The send under way for each reference. A second call for one joins it instead of pushing again. */
+  const inFlight = new Map<string, Promise<SendOutcome>>();
+
   return {
     /**
      * Sends the LINE confirmation of a confirmed visit, the one pending_confirmations lists for it, and records the
-     * outcome. A visit with a `sent` notification gets nothing more: that is the only send-once rule. Publishing an
+     * outcome. A visit with a `sent` notification gets nothing more: that is the only send-once rule. Calls for a
+     * visit that is being sent share that send, so this process never pushes one visit twice at once. Publishing an
      * appointment calls this, whichever way it was published, and so does the board's Send again.
      */
-    async sendConfirmation(reference: string): Promise<SendOutcome> {
-      const sent = await strapi.documents(UID.notification).findFirst({
-        filters: { outcome: { $eq: 'sent' }, appointmentReference: { $eq: reference } },
-        fields: ['appointmentReference'],
-      });
-      if (sent) return { reference, status: 'already_sent', message: `The LINE confirmation for ${reference} was already sent.` };
-
-      const draft = (await strapi.documents(UID.appointment).findFirst({
-        status: 'draft',
-        filters: { reference: { $eq: reference } },
-        fields: ['documentId'],
-      })) as Doc | null;
-      if (!draft) return { reference, status: 'not_found', message: `No appointment ${reference}.` };
-      const published = (await strapi.documents(UID.appointment).findOne({
-        documentId: draft.documentId,
-        status: 'published',
-        populate: CONFIRMATION_POPULATE,
-      })) as Doc | null;
-      if (!published) {
-        return { reference, status: 'not_confirmed', message: `Appointment ${reference} hasn't been confirmed, so it gets no confirmation.` };
-      }
-
-      const { lineChannelAccessToken: token, lineApiBaseUrl, liffUrl, timezone, houseName } = getConfig(strapi);
-      if (!token) return notConfigured(reference, NO_TOKEN);
-      if (!liffUrl) return notConfigured(reference, NO_LIFF_URL);
-
-      const confirmation = confirmationFor(published, { liffUrl, timezone, houseName });
-      if (!confirmation) return finish(reference, 'failed', "The appointment has no valid LINE customer, so it can't be confirmed over LINE.", token);
-      const { status, detail } = await push({ apiBaseUrl: lineApiBaseUrl, token }, confirmation.lineUserId, confirmation.message);
-      return finish(reference, status, detail, token);
+    sendConfirmation(reference: string): Promise<SendOutcome> {
+      const running = inFlight.get(reference);
+      if (running) return running;
+      const sending = send(reference).finally(() => inFlight.delete(reference));
+      inFlight.set(reference, sending);
+      return sending;
     },
   };
 };

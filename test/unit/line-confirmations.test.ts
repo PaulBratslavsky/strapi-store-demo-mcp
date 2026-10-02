@@ -1,6 +1,7 @@
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UID } from '../../server/src/constants';
 import confirmations from '../../server/src/services/confirmations';
 import { LIFF_URL, LINE_API, LINE_CONFIG as CONFIG, LINE_USER_ID, PUBLISHED, TOKEN, lineAnswers, world } from './fake-line';
 
@@ -62,6 +63,36 @@ describe('sendConfirmation', () => {
     const { sender } = world();
     await sender.sendConfirmation('APT-4821');
     expect(await sender.sendConfirmation('APT-4821')).toMatchObject({ status: 'already_sent' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('sends once when it is asked twice at the same time, and both callers get that outcome', async () => {
+    const { sender, record } = world();
+    const [first, second] = await Promise.all([sender.sendConfirmation('APT-4821'), sender.sendConfirmation('APT-4821')]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(record).toHaveBeenCalledOnce();
+    expect(first.status).toBe('sent');
+    expect(second).toBe(first);
+  });
+
+  it('lets the next call send when a send ended in an error', async () => {
+    const w = world();
+    const documents = w.strapi.documents;
+    let failNext = true;
+    w.strapi.documents = Object.assign(
+      (uid: string) =>
+        uid === UID.notification && failNext
+          ? {
+              findFirst: async () => {
+                failNext = false;
+                throw new Error('database is down');
+              },
+            }
+          : documents(uid),
+      { use: documents.use }
+    );
+    await expect(w.sender.sendConfirmation('APT-4821')).rejects.toThrow('database is down');
+    expect(await w.sender.sendConfirmation('APT-4821')).toMatchObject({ status: 'sent' });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
