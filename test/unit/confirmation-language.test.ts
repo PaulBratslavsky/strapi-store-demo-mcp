@@ -99,6 +99,12 @@ describe('inVisitLanguage, the names a confirmation uses', () => {
     });
   });
 
+  it('names the products in the order the visit links them, whatever order the lookup answers in', async () => {
+    const reversed = { ...IN_ENGLISH, [UID.product]: { en: [...IN_ENGLISH[UID.product].en].reverse() } };
+    const [visit] = await inVisitLanguage(world({ translations: reversed }).strapi, [PUBLISHED_EN]);
+    expect(namesOf(visit).products).toEqual(['Weekender 50', 'Passport Cover']);
+  });
+
   it.each([
     ['empty', ''],
     ['blank', '  '],
