@@ -37,7 +37,11 @@ export interface SendOutcome {
   message: string;
 }
 
-/** LINE gets this long to answer a push, so a publish waits for its confirmation this long at most. */
+/**
+ * LINE gets this long to answer a push. A publish outside a transaction (Confirm, confirm_appointment) waits for its
+ * confirmation this long at most; one inside a transaction (the Content Manager's Publish) doesn't wait, and sends
+ * after the commit.
+ */
 export const PUSH_TIMEOUT_MS = 8000;
 
 const NO_TOKEN = "LINE_CHANNEL_ACCESS_TOKEN isn't set: confirmations aren't sent from Strapi.";
