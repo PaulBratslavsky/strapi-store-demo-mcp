@@ -131,7 +131,8 @@ describe('resetDemoAppointments', () => {
    * A Strapi holding these rows, by content type, as a database does: a read answers up to the `limit` it is given of the
    * rows still there, and a delete takes its document out. It records every findMany and delete with its arguments, in
    * order. A delete of a document in `failing` throws, as one Strapi couldn't finish would, and a delete of one in
-   * `stuck` answers as if it worked and leaves the document there.
+   * `stuck` answers as if it worked and leaves the document there. A content type read more than 100 times throws: a
+   * reset that never stops would otherwise run the test out of memory, which is a crash, not a failure that says why.
    */
   const strapiHolding = (
     rows: Record<string, Array<Record<string, unknown>>>,
@@ -139,8 +140,12 @@ describe('resetDemoAppointments', () => {
   ) => {
     const calls: Call[] = [];
     const gone = new Set<string>();
+    const reads = new Map<string, number>();
     const documents = (uid: string) => ({
       findMany: async (params: { limit?: number }) => {
+        const read = (reads.get(uid) ?? 0) + 1;
+        reads.set(uid, read);
+        if (read > 100) throw new Error(`${uid} was read ${read} times, and the reset is still going.`);
         const left = (rows[uid] ?? []).filter((row) => !gone.has(`${uid}/${row.documentId}`));
         const answered = left.slice(0, params?.limit ?? left.length);
         calls.push({ uid, method: 'findMany', params, returned: answered.length });
